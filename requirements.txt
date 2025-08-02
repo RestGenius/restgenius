@@ -1,0 +1,5 @@
+
+flask
+openai
+pdfkit
+jinja2
