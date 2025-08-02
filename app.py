@@ -13,10 +13,10 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def index():
     if request.method == "POST":
         sales_data = request.form["sales_data"]
-        prompt = f"Ось дані про продажі:
+        prompt = f"""Ось дані про продажі:
 {sales_data}
 
-Згенеруй ідеї для маркетингових акцій, які допоможуть збільшити прибуток ресторану."
+Згенеруй ідеї для маркетингових акцій, які допоможуть збільшити прибуток ресторану."""
 
         response = openai.ChatCompletion.create(
             model="gpt-4",
