@@ -3,3 +3,4 @@ flask
 openai
 pdfkit
 jinja2
+gunicorn
