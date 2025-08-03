@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template, send_file
-import openai
+from openai import OpenAI
 import pdfkit
 import os
 import csv
@@ -39,7 +39,8 @@ def analyze():
 
 Generate detailed, actionable marketing suggestions to help this restaurant increase revenue."""
 
-        response = openai.ChatCompletion.create(
+        response = client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        (
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
