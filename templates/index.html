@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>RestGenius AI</title>
+    <title>RestGenius - Sales Analyzer</title>
 </head>
 <body>
-    <h1>RestGenius AI: Marketing Idea Generator</h1>
-    <form method="post">
-        <textarea name="sales_data" rows="10" cols="50" placeholder="Paste your sales data here..."></textarea><br>
-        <input type="submit" value="Generate Ideas">
+    <h1>Upload Sales Data (.CSV)</h1>
+    <form action="/analyze" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv" required>
+        <button type="submit">Upload CSV</button>
     </form>
 </body>
 </html>
