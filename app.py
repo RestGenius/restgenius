@@ -1,19 +1,17 @@
-
 from flask import Flask, request, render_template, send_file
 import openai
 import pdfkit
 import os
+import csv
+import io
 from datetime import datetime
 
 app = Flask(__name__)
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    from flask import request, redirect, flash
-import csv
-import io
+    return render_template("index.html")
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -32,21 +30,14 @@ def analyze():
         csv_input = csv.reader(stream)
         rows = list(csv_input)
 
-        # Тестовий вивід в лог
-        for row in rows:
-            print(row)
+        # Створюємо текст з CSV-даних
+        sales_data = "\n".join([", ".join(row) for row in rows])
 
-        return "File uploaded and parsed successfully!"
-    except Exception as e:
-        print("Error parsing CSV:", e)
-        return f"Error parsing file: {str(e)}", 500
-
-    if request.method == "POST":
-        sales_data = request.form["sales_data"]
-        prompt = f"""Ось дані про продажі:
+        # Формуємо запит до OpenAI
+        prompt = f"""Here are the sales data:
 {sales_data}
 
-Згенеруй ідеї для маркетингових акцій, які допоможуть збільшити прибуток ресторану."""
+Generate detailed, actionable marketing suggestions to help this restaurant increase revenue."""
 
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -55,6 +46,7 @@ def analyze():
 
         result = response.choices[0].message.content.strip()
 
+        # Генеруємо PDF
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         html = render_template("report.html", content=result)
         pdf_path = f"report_{now}.pdf"
@@ -62,8 +54,9 @@ def analyze():
 
         return send_file(pdf_path, as_attachment=True)
 
-    return render_template("index.html")
+    except Exception as e:
+        print("Error parsing or analyzing CSV:", e)
+        return f"Error: {str(e)}", 500
 
 if __name__ == "__main__":
     app.run(debug=True)
-    
