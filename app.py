@@ -7,7 +7,7 @@ import io
 from datetime import datetime
 
 app = Flask(__name__)
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Ініціалізуємо один раз
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -39,12 +39,10 @@ def analyze():
 
 Generate detailed, actionable marketing suggestions to help this restaurant increase revenue."""
 
-        response = client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        (
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-
 
         result = response.choices[0].message.content.strip()
 
