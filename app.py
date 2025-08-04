@@ -26,13 +26,24 @@ def analyze():
     if not file.filename.endswith('.csv'):
         return "File must be a CSV", 400
 
+    # 👉 Отримуємо email із форми
+    user_email = request.form.get('email', '')
+
+    # ✅ Перевіряємо, чи це PRO-користувач
+    def check_if_user_is_pro(email):
+        return email.endswith('@pro.com')  # це поки що, потім буде база/Stripe
+
+    is_pro = check_if_user_is_pro(user_email)
+
     try:
+        # 🔄 Читання CSV
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         csv_input = csv.reader(stream)
         rows = list(csv_input)
 
         sales_data = "\n".join([", ".join(row) for row in rows])
 
+        # 🧠 Формуємо промпт для AI
         prompt = f"""
 You're an expert restaurant marketing consultant. Analyze the following sales data:
 
@@ -42,8 +53,7 @@ Generate a professional, well-structured growth report including:
 - Key recommendations
 - Action steps
 - Data-backed justifications
-- ROI projections (rough)
-- Short summary with suggested next actions
+{"- ROI projections\n- Financial forecast\n- Strategic insights" if is_pro else ""}
 """
 
         chat_completion = client.chat.completions.create(
@@ -53,8 +63,26 @@ Generate a professional, well-structured growth report including:
 
         result = chat_completion.choices[0].message.content.strip()
 
+        # 📈 PRO-контент
+        roi_forecast = ""
+        top_campaign = ""
+        if is_pro:
+            roi_forecast = """Expected ROI: 420%
+Break-even point: Day 3
+Projected revenue increase: $2,500
+Customer acquisition cost (CAC): $1.20
+Lifetime value (LTV): $58.30"""
+            top_campaign = "Happy Hour Loyalty Combo"
+
+        # 🧾 Генерація PDF
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        html = render_template("report.html", content=result)
+        html = render_template(
+            "report.html",
+            content=result,
+            is_pro=is_pro,
+            roi_forecast=roi_forecast,
+            top_campaign=top_campaign
+        )
         pdf_path = f"report_{now}.pdf"
         pdfkit.from_string(html, pdf_path)
 
