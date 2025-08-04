@@ -2,80 +2,94 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>RestGenius - Upload Sales Data</title>
+  <title>RestGenius — AI Marketing Report</title>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f9f9f9;
-      padding: 40px;
+      background-color: #f5f7fa;
       color: #333;
+      padding: 40px;
     }
 
     .container {
-      background: #fff;
+      background-color: #fff;
       max-width: 600px;
       margin: auto;
       padding: 40px;
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
     }
 
     h1 {
       text-align: center;
       color: #1a73e8;
+      font-size: 26px;
+      margin-bottom: 10px;
     }
 
-    p {
+    p.description {
       text-align: center;
-      font-size: 1.1em;
+      font-size: 1.05em;
+      color: #555;
       margin-bottom: 30px;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 10px;
     }
 
     input[type="file"] {
       display: block;
-      margin: 20px auto;
+      margin: 0 auto 20px;
       padding: 10px;
-      border-radius: 8px;
+      border-radius: 6px;
       border: 1px solid #ccc;
+      font-size: 1em;
     }
 
     button {
       display: block;
-      margin: 20px auto;
-      padding: 12px 30px;
+      margin: 20px auto 0;
+      padding: 12px 32px;
       font-size: 1em;
       color: #fff;
       background-color: #1a73e8;
       border: none;
       border-radius: 8px;
       cursor: pointer;
+      transition: background-color 0.2s ease;
     }
 
     button:hover {
-      background-color: #0f5ec2;
+      background-color: #0d5fc4;
     }
 
     footer {
       margin-top: 50px;
       text-align: center;
       font-size: 0.9em;
-      color: #aaa;
+      color: #888;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>📁 Upload Your Restaurant Sales Data</h1>
-    <p>Upload a CSV file with your sales data to generate a professional marketing report.</p>
-    
+    <h1>📁 Upload Your Sales Report</h1>
+    <p class="description">
+      Upload a <strong>.csv</strong> file with your recent sales data. RestGenius will analyze it and generate a marketing strategy report for you.
+    </p>
+
     <form action="/analyze" method="POST" enctype="multipart/form-data">
-      <input type="file" name="file" accept=".csv" required>
+      <label for="file">Select CSV File</label>
+      <input type="file" name="file" id="file" accept=".csv" required>
       <button type="submit">Generate Report</button>
     </form>
   </div>
 
   <footer>
-    Powered by RestGenius.ai — Smart tools for smart restaurants
+    Made with ❤️ by RestGenius.ai — AI tools built for restaurant growth.
   </footer>
 </body>
 </html>
