@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template, send_file
-from openai import OpenAI
+import openai
 import pdfkit
 import os
 import csv
@@ -7,9 +7,10 @@ import io
 from datetime import datetime
 
 app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Ініціалізуємо один раз
 
-@app.route("/", methods=["GET", "POST"])
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+@app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
@@ -30,23 +31,28 @@ def analyze():
         csv_input = csv.reader(stream)
         rows = list(csv_input)
 
-        # Створюємо текст з CSV-даних
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # Формуємо запит до OpenAI
-        prompt = f"""Here are the sales data:
+        prompt = f"""
+You're an expert restaurant marketing consultant. Analyze the following sales data:
+
 {sales_data}
 
-Generate detailed, actionable marketing suggestions to help this restaurant increase revenue."""
+Generate a professional, well-structured growth report including:
+- Key recommendations
+- Action steps
+- Data-backed justifications
+- ROI projections (rough)
+- Short summary with suggested next actions
+"""
 
-        response = client.chat.completions.create(
+        chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
 
-        result = response.choices[0].message.content.strip()
+        result = chat_completion.choices[0].message.content.strip()
 
-        # Генеруємо PDF
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         html = render_template("report.html", content=result)
         pdf_path = f"report_{now}.pdf"
@@ -55,7 +61,7 @@ Generate detailed, actionable marketing suggestions to help this restaurant incr
         return send_file(pdf_path, as_attachment=True)
 
     except Exception as e:
-        print("Error parsing or analyzing CSV:", e)
+        print("Error:", e)
         return f"Error: {str(e)}", 500
 
 if __name__ == "__main__":
