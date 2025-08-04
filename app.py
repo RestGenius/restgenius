@@ -45,6 +45,55 @@ def analyze():
 
     is_pro = check_if_user_is_pro(user_email)
 
+    @app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        hashed_pw = generate_password_hash(password, method="sha256")
+
+        if User.query.filter_by(email=email).first():
+            return "User already exists"
+
+        new_user = User(email=email, password=hashed_pw)
+        db.session.add(new_user)
+        db.session.commit()
+
+        return "Registration successful. Please log in."
+
+    return render_template("register.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        user = User.query.filter_by(email=email).first()
+
+        if not user or not check_password_hash(user.password, password):
+            return "Invalid credentials"
+
+        login_user(user)
+        return "Login successful. Go to /dashboard"
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return "Logged out successfully"
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return f"Welcome, {current_user.email}! [PRO: {current_user.is_pro}]"
+
+
     # --- Читаємо usage.json ---
     usage_path = "usage.json"
     if os.path.exists(usage_path):
