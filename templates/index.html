@@ -81,21 +81,22 @@
 <body>
   <h1>📊 Upload Your Sales Data</h1>
 
-  <form method="POST" action="/analyze" enctype="multipart/form-data">
-    <input type="file" name="file" required>
-    <br><br>
-    <label for="email">Your Email:</label>
-    <input type="email" name="email" required>
-    <label for="file-upload" class="custom-file-upload">
-      📁 Choose CSV File
-    </label>
-    <input id="file-upload" type="file" name="file" accept=".csv" onchange="updateFileName()">
+ <form method="POST" action="/analyze" enctype="multipart/form-data">
+  <label for="email">Your Email:</label><br>
+  <input type="email" name="email" required style="width: 100%; padding: 10px; margin-bottom: 20px;"><br><br>
 
-    <div id="file-name" class="note">No file selected</div>
+  <!-- Кастомна кнопка + приховане поле -->
+  <label for="file-upload" class="custom-file-upload">
+    📁 Choose CSV File
+  </label>
+  <input id="file-upload" type="file" name="file" accept=".csv" required onchange="updateFileName()">
 
-    <br><br>
-    <button type="submit">Generate Report</button>
-  </form>
+  <!-- Назва обраного файлу -->
+  <div id="file-name" class="note">No file selected</div>
+
+  <br><br>
+  <button type="submit">Generate Report</button>
+</form>
 
   <div class="footer">
     Powered by RestGenius.ai – Your AI Assistant for Restaurant Growth 🚀
