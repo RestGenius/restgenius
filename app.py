@@ -16,6 +16,10 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    import json
+    from datetime import timedelta
+
+    # --- Перевірка файлу ---
     if 'file' not in request.files:
         return "No file uploaded", 400
 
@@ -26,24 +30,56 @@ def analyze():
     if not file.filename.endswith('.csv'):
         return "File must be a CSV", 400
 
-    # 👉 Отримуємо email із форми
-    user_email = request.form.get('email', '')
+    # --- Отримуємо email ---
+    user_email = request.form.get('email', '').strip().lower()
+    if not user_email:
+        return "Email is required", 400
 
-    # ✅ Перевірка PRO
+    # --- Перевірка PRO ---
     def check_if_user_is_pro(email):
         return email.endswith('@pro.com')
 
     is_pro = check_if_user_is_pro(user_email)
 
+    # --- Читаємо usage.json ---
+    usage_path = "usage.json"
+    if os.path.exists(usage_path):
+        with open(usage_path, "r") as f:
+            usage_data = json.load(f)
+    else:
+        usage_data = {}
+
+    now = datetime.now()
+    user_record = usage_data.get(user_email, {
+        "reports": 0,
+        "last_reset": now.isoformat()
+    })
+
+    # --- Скидаємо лічильник, якщо пройшло >14 днів ---
+    last_reset = datetime.fromisoformat(user_record["last_reset"])
+    if now - last_reset > timedelta(days=14):
+        user_record["reports"] = 0
+        user_record["last_reset"] = now.isoformat()
+
+    # --- Перевірка ліміту ---
+    if not is_pro and user_record["reports"] >= 3:
+        return """
+        <h2>❌ Free Limit Reached</h2>
+        <p>You have used all 3 reports for this 2-week period.</p>
+        <p>Upgrade to PRO to unlock unlimited reports and advanced features.</p>
+        """, 403
+
     try:
-        # 🔄 Читання CSV
+        # --- Обробка CSV ---
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         csv_input = csv.reader(stream)
         rows = list(csv_input)
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # 🔮 Промпти
-        prompt = f"""
+        # --- Промпти ---
+        roi_prompt = f"""You're an expert in restaurant finance...{sales_data}"""
+        campaign_prompt = f"""You're an AI restaurant strategist...{sales_data}"""
+        main_prompt = f"""
 You're an expert restaurant marketing consultant. Analyze the following sales data:
 
 {sales_data}
@@ -55,39 +91,15 @@ Generate a professional, well-structured growth report including:
 {"- ROI projections\n- Financial forecast\n- Strategic insights" if is_pro else ""}
 """
 
-        roi_prompt = f"""
-You're an expert in restaurant finance and business growth. Based on the following sales data:
-
-{sales_data}
-
-Generate a concise but clear ROI & financial forecast for implementing smart marketing strategies.
-Include:
-- Expected revenue uplift (in % and $)
-- Changes in average order value
-- Operational efficiency improvements
-- ROI ratio (approximate)
-Present the content in professional, structured English.
-"""
-
-        campaign_prompt = f"""
-You're an AI restaurant marketing strategist. Based on this sales data:
-
-{sales_data}
-
-Suggest the most effective, high-ROI marketing campaign idea for the restaurant.
-Keep it under 20 words. Return only the campaign title.
-"""
-
-        # 🧠 Генерація основного звіту
+        # --- Генерація GPT-відповіді ---
         chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": main_prompt}]
         )
         result = chat_completion.choices[0].message.content.strip()
 
-        # 🧠 PRO-блоки, тільки якщо is_pro
-        roi_forecast = ""
-        top_campaign = ""
+        # --- PRO-додатки ---
+        roi_forecast, top_campaign = "", ""
         if is_pro:
             roi_response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -101,16 +113,22 @@ Keep it under 20 words. Return only the campaign title.
             )
             top_campaign = campaign_response.choices[0].message.content.strip()
 
-        # 🧾 Генерація PDF
-        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        html = render_template("report.html", 
+        # --- Рендеринг PDF ---
+        html = render_template("report.html",
                                content=result,
                                is_pro=is_pro,
                                roi_forecast=roi_forecast,
                                top_campaign=top_campaign)
-
-        pdf_path = f"report_{now}.pdf"
+        pdf_path = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
         pdfkit.from_string(html, pdf_path)
+
+        # --- Оновлення usage.json ---
+        if not is_pro:
+            user_record["reports"] += 1
+            usage_data[user_email] = user_record
+            with open(usage_path, "w") as f:
+                json.dump(usage_data, f, indent=2)
+
         return send_file(pdf_path, as_attachment=True)
 
     except Exception as e:
