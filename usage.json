@@ -1,0 +1,10 @@
+{
+  "user@example.com": {
+    "reports": 2,
+    "last_reset": "2025-08-03T12:00:00"
+  },
+  "pro@pro.com": {
+    "reports": 0,
+    "last_reset": "2025-07-28T08:40:00"
+  }
+}
