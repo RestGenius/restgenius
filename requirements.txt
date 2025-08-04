@@ -4,3 +4,5 @@ openai>=1.0.0
 pdfkit
 jinja2
 gunicorn
+flask-login
+flask-sqlalchemy
