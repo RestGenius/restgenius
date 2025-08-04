@@ -43,6 +43,31 @@ def analyze():
 
         sales_data = "\n".join([", ".join(row) for row in rows])
 
+        # 🔮 Створення промпту для ROI-блоку
+roi_prompt = f"""
+You're an expert in restaurant finance and business growth. Based on the following sales data:
+
+{sales_data}
+
+Generate a concise but clear ROI & financial forecast for implementing smart marketing strategies.
+Include:
+- Expected revenue uplift (in % and $)
+- Changes in average order value
+- Operational efficiency improvements
+- ROI ratio (approximate)
+Present the content in professional, structured English.
+"""
+
+# 🚀 Створення промпту для AI-кампанії
+campaign_prompt = f"""
+You're an AI restaurant marketing strategist. Based on this sales data:
+
+{sales_data}
+
+Suggest the most effective, high-ROI marketing campaign idea for the restaurant.
+Keep it under 20 words. Return only the campaign title.
+"""
+
         # 🧠 Формуємо промпт для AI
         prompt = f"""
 You're an expert restaurant marketing consultant. Analyze the following sales data:
@@ -62,6 +87,21 @@ Generate a professional, well-structured growth report including:
         )
 
         result = chat_completion.choices[0].message.content.strip()
+
+# ✅ Отримання ROI-блоку
+roi_response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": roi_prompt}]
+)
+roi_forecast = roi_response.choices[0].message.content.strip()
+
+# ✅ Отримання Top Campaign
+campaign_response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": campaign_prompt}]
+)
+top_campaign = campaign_response.choices[0].message.content.strip()
+
 
         # 📈 PRO-контент
         roi_forecast = ""
