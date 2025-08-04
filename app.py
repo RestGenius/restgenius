@@ -116,18 +116,21 @@ Lifetime value (LTV): $58.30"""
 
         # 🧾 Генерація PDF
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        html = render_template(
-            "report.html",
-            content=result,
-            is_pro=is_pro,
-            roi_forecast=roi_forecast,
-            top_campaign=top_campaign
+        html = render_template("report.html", 
+                       content=result,
+                       is_pro=is_pro_user,
+                       roi_forecast=roi_forecast,
+                       top_campaign=top_campaign)
+
         )
-        pdf_path = f"report_{now}.pdf"
-        pdfkit.from_string(html, pdf_path)
+       # Ім’я PDF-файлу
+pdf_path = f"report_{now}.pdf"
 
-        return send_file(pdf_path, as_attachment=True)
+# 🔽 Перетворення HTML → PDF
+pdfkit.from_string(html, pdf_path)
 
+# 🔽 Відправка PDF-файлу користувачу
+return send_file(pdf_path, as_attachment=True)
     except Exception as e:
         print("Error:", e)
         return f"Error: {str(e)}", 500
