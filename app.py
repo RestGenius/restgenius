@@ -29,9 +29,9 @@ def analyze():
     # 👉 Отримуємо email із форми
     user_email = request.form.get('email', '')
 
-    # ✅ Перевіряємо, чи це PRO-користувач
+    # ✅ Перевірка PRO
     def check_if_user_is_pro(email):
-        return email.endswith('@pro.com')  # це поки що, потім буде база/Stripe
+        return email.endswith('@pro.com')
 
     is_pro = check_if_user_is_pro(user_email)
 
@@ -40,11 +40,22 @@ def analyze():
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         csv_input = csv.reader(stream)
         rows = list(csv_input)
-
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # 🔮 Створення промпту для ROI-блоку
-roi_prompt = f"""
+        # 🔮 Промпти
+        prompt = f"""
+You're an expert restaurant marketing consultant. Analyze the following sales data:
+
+{sales_data}
+
+Generate a professional, well-structured growth report including:
+- Key recommendations
+- Action steps
+- Data-backed justifications
+{"- ROI projections\n- Financial forecast\n- Strategic insights" if is_pro else ""}
+"""
+
+        roi_prompt = f"""
 You're an expert in restaurant finance and business growth. Based on the following sales data:
 
 {sales_data}
@@ -58,8 +69,7 @@ Include:
 Present the content in professional, structured English.
 """
 
-# 🚀 Створення промпту для AI-кампанії
-campaign_prompt = f"""
+        campaign_prompt = f"""
 You're an AI restaurant marketing strategist. Based on this sales data:
 
 {sales_data}
@@ -68,69 +78,41 @@ Suggest the most effective, high-ROI marketing campaign idea for the restaurant.
 Keep it under 20 words. Return only the campaign title.
 """
 
-        # 🧠 Формуємо промпт для AI
-        prompt = f"""
-You're an expert restaurant marketing consultant. Analyze the following sales data:
-
-{sales_data}
-
-Generate a professional, well-structured growth report including:
-- Key recommendations
-- Action steps
-- Data-backed justifications
-{"- ROI projections\n- Financial forecast\n- Strategic insights" if is_pro else ""}
-"""
-
+        # 🧠 Генерація основного звіту
         chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-
         result = chat_completion.choices[0].message.content.strip()
 
-# ✅ Отримання ROI-блоку
-roi_response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": roi_prompt}]
-)
-roi_forecast = roi_response.choices[0].message.content.strip()
-
-# ✅ Отримання Top Campaign
-campaign_response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": campaign_prompt}]
-)
-top_campaign = campaign_response.choices[0].message.content.strip()
-
-
-        # 📈 PRO-контент
+        # 🧠 PRO-блоки, тільки якщо is_pro
         roi_forecast = ""
         top_campaign = ""
         if is_pro:
-            roi_forecast = """Expected ROI: 420%
-Break-even point: Day 3
-Projected revenue increase: $2,500
-Customer acquisition cost (CAC): $1.20
-Lifetime value (LTV): $58.30"""
-            top_campaign = "Happy Hour Loyalty Combo"
+            roi_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": roi_prompt}]
+            )
+            roi_forecast = roi_response.choices[0].message.content.strip()
+
+            campaign_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": campaign_prompt}]
+            )
+            top_campaign = campaign_response.choices[0].message.content.strip()
 
         # 🧾 Генерація PDF
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         html = render_template("report.html", 
-                       content=result,
-                       is_pro=is_pro_user,
-                       roi_forecast=roi_forecast,
-                       top_campaign=top_campaign)
+                               content=result,
+                               is_pro=is_pro,
+                               roi_forecast=roi_forecast,
+                               top_campaign=top_campaign)
 
-        )
-       # Ім’я PDF-файлу
-pdf_path = f"report_{now}.pdf"
+        pdf_path = f"report_{now}.pdf"
+        pdfkit.from_string(html, pdf_path)
+        return send_file(pdf_path, as_attachment=True)
 
-# 🔽 Перетворення HTML → PDF
-pdfkit.from_string(html, pdf_path)
-
-# 🔽 Відправка PDF-файлу користувачу
-return send_file(pdf_path, as_attachment=True)
     except Exception as e:
         print("Error:", e)
         return f"Error: {str(e)}", 500
