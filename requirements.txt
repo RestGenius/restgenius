@@ -1,8 +1,9 @@
-
-Flask
-openai>=1.0.0
-pdfkit
-jinja2
-gunicorn
-flask-login
-flask-sqlalchemy
+Flask==2.3.2
+Flask-Mail==0.9.1
+Flask-Login==0.6.2
+Flask-SQLAlchemy==3.1.1
+itsdangerous==2.1.2
+Jinja2==3.1.2
+openai==1.14.3
+pdfkit==1.0.0
+gunicorn==21.2.0
