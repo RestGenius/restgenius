@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Your Report History</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      margin: 40px;
+      color: #333;
+    }
+    h1 {
+      color: #1a73e8;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #ddd;
+    }
+    a.download-link {
+      color: #1a73e8;
+      text-decoration: none;
+    }
+    a.download-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <h1>📄 Your Report History</h1>
+
+  {% if reports %}
+    <table>
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Created At</th>
+          <th>Download</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for report in reports %}
+        <tr>
+          <td>{{ report.filename }}</td>
+          <td>{{ report.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td><a class="download-link" href="{{ url_for('download_report', filename=report.filename) }}">⬇️ Download</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>You haven't generated any reports yet.</p>
+  {% endif %}
+</body>
+</html>
