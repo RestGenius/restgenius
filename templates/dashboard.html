@@ -1,62 +1,82 @@
+<!-- templates/dashboard.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Dashboard – RestGenius</title>
-  <style>
-    body {
-      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-      margin: 40px;
-      color: #333;
-    }
-    h1 {
-      color: #1a73e8;
-    }
-    .box {
-      margin-top: 30px;
-      padding: 20px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      background-color: #f9f9f9;
-    }
-    .button {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 16px;
-      background-color: #1a73e8;
-      color: white;
-      text-decoration: none;
-      border-radius: 6px;
-    }
-    .free {
-      background: #fff3cd;
-      border-left: 5px solid #ffc107;
-    }
-    .pro {
-      background: #d4edda;
-      border-left: 5px solid #28a745;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>Dashboard – RestGenius</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f6f9fc;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 18px;
+            background: #1a73e8;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            font-size: 16px;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .top-bar a {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+    </style>
 </head>
 <body>
-  <h1>👋 Welcome, {{ email }}</h1>
-  <p>✅ Email Verified: {{ is_verified }}</p>
-
-  {% if not is_pro %}
-    <div class="box free">
-      <h2>🔓 Free Plan</h2>
-      <p>You have <strong>{{ reports_left }}</strong> reports left in this 2-week period.</p>
-      <p>Reports reset on: <strong>{{ next_reset }}</strong></p>
-      <p><a href="#" class="button">Upgrade to PRO</a></p>
+<div class="container">
+    <div class="top-bar">
+        <div><strong>👤 {{ current_user.email }}</strong></div>
+        <div><a href="{{ url_for('logout') }}">Logout</a></div>
     </div>
-  {% else %}
-    <div class="box pro">
-      <h2>⭐ PRO Plan</h2>
-      <p>Unlimited report generation. Thank you for supporting us!</p>
-    </div>
-  {% endif %}
 
-  <a href="{{ url_for('report_history') }}" class="button">📄 My Reports</a>
-  <a href="{{ url_for('logout') }}" class="button" style="background-color: #dc3545;">🚪 Logout</a>
+    <h1>Welcome to your Dashboard</h1>
+
+    <div class="info-box">
+        {% if is_pro %}
+            💼 <strong>PRO Account:</strong> You have unlimited access to reports.
+        {% else %}
+            📊 <strong>Free Plan:</strong> You can generate <strong>{{ remaining_reports }}</strong> reports this period.<br>
+            (Resets every 14 days)
+        {% endif %}
+    </div>
+
+    <a class="btn" href="{{ url_for('report_history') }}">📁 My Reports</a>
+</div>
 </body>
 </html>
