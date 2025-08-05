@@ -219,14 +219,28 @@ def report_history():
     return render_template('report_history.html', reports=reports)
 
 
-@app.route('/download-report/<path:filename>')
+@app.route("/dashboard")
 @login_required
-def download_report(filename):
-    try:
-        file_path = os.path.abspath(os.path.join("reports", filename))
-        return send_file(file_path, as_attachment=True)
-    except Exception as e:
-        return f"Error downloading file: {e}", 500
+def dashboard():
+    user_email = current_user.email
+    is_pro = user_email.endswith("@pro.com")
+
+    # --- Зчитуємо usage.json ---
+    usage_path = "usage.json"
+    if os.path.exists(usage_path):
+        with open(usage_path, "r") as f:
+            usage_data = json.load(f)
+    else:
+        usage_data = {}
+
+    now = datetime.now()
+    user_record = usage_data.get(user_email, {"reports": 0, "last_reset": now.isoformat()})
+    if now - datetime.fromisoformat(user_record["last_reset"]) > timedelta(days=14):
+        user_record = {"reports": 0, "last_reset": now.isoformat()}
+
+    remaining_reports = "Unlimited" if is_pro else max(0, 3 - user_record["reports"])
+
+    return render_template("dashboard.html", is_pro=is_pro, remaining_reports=remaining_reports)
 
 
 if __name__ == "__main__":
