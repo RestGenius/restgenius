@@ -171,17 +171,28 @@ def analyze():
                 model="gpt-3.5-turbo", messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
-        html = render_template("report.html", content=result, is_pro=is_pro,
-                               roi_forecast=roi_forecast, top_campaign=top_campaign)
+               # --- Рендер HTML ---
+        html = render_template("report.html", 
+                               content=result, 
+                               is_pro=is_pro,
+                               roi_forecast=roi_forecast, 
+                               top_campaign=top_campaign)
+
+        # --- Створення PDF ---
         pdf_path = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
         pdfkit.from_string(html, pdf_path)
 
-        if not is_pro:
-            user_record["reports"] += 1
-            usage_data[user_email] = user_record
-            with open(usage_path, "w") as f:
-                json.dump(usage_data, f, indent=2)
+        # --- Збереження звіту в базу, якщо користувач авторизований ---
+        if current_user.is_authenticated:
+            new_report = Report(
+                user_id=current_user.id,
+                filename=pdf_path,
+                created_at=datetime.now()
+            )
+            db.session.add(new_report)
+            db.session.commit()
 
+        # --- Відправлення PDF користувачу ---
         return send_file(pdf_path, as_attachment=True)
 
     except Exception as e:
