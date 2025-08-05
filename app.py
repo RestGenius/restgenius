@@ -34,7 +34,7 @@ login_manager.init_app(app)
 with app.app_context():
     db.create_all()
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -155,7 +155,7 @@ def analyze():
 
         # === GPT: Основний запит ===
         main_prompt = f"""You're an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"""
-        chat_completion = client.chat.completions.create(
+        chat_completion = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": main_prompt}]
         )
@@ -166,11 +166,11 @@ def analyze():
             roi_prompt = f"ROI prediction:\n{sales_data}"
             campaign_prompt = f"Suggest a campaign:\n{sales_data}"
 
-            roi_forecast = client.chat.completions.create(
+            roi_forecast = openai.chat.completions.create(
                 model="gpt-3.5-turbo", messages=[{"role": "user", "content": roi_prompt}]
             ).choices[0].message.content.strip()
 
-            top_campaign = client.chat.completions.create(
+            top_campaign = openai.chat.completions.create(
                 model="gpt-3.5-turbo", messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
