@@ -7,3 +7,4 @@ Jinja2==3.1.2
 openai==1.14.3
 pdfkit==1.0.0
 gunicorn==21.2.0
+werkzeug==2.3.8
