@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard – RestGenius</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      margin: 40px;
+      color: #333;
+    }
+    h1 {
+      color: #1a73e8;
+    }
+    .box {
+      margin-top: 30px;
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background-color: #f9f9f9;
+    }
+    .button {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 16px;
+      background-color: #1a73e8;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    .free {
+      background: #fff3cd;
+      border-left: 5px solid #ffc107;
+    }
+    .pro {
+      background: #d4edda;
+      border-left: 5px solid #28a745;
+    }
+  </style>
+</head>
+<body>
+  <h1>👋 Welcome, {{ email }}</h1>
+  <p>✅ Email Verified: {{ is_verified }}</p>
+
+  {% if not is_pro %}
+    <div class="box free">
+      <h2>🔓 Free Plan</h2>
+      <p>You have <strong>{{ reports_left }}</strong> reports left in this 2-week period.</p>
+      <p>Reports reset on: <strong>{{ next_reset }}</strong></p>
+      <p><a href="#" class="button">Upgrade to PRO</a></p>
+    </div>
+  {% else %}
+    <div class="box pro">
+      <h2>⭐ PRO Plan</h2>
+      <p>Unlimited report generation. Thank you for supporting us!</p>
+    </div>
+  {% endif %}
+
+  <a href="{{ url_for('report_history') }}" class="button">📄 My Reports</a>
+  <a href="{{ url_for('logout') }}" class="button" style="background-color: #dc3545;">🚪 Logout</a>
+</body>
+</html>
