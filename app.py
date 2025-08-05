@@ -114,6 +114,8 @@ def logout():
 def dashboard():
     return f"Hello, {current_user.email} — Verified: {current_user.is_verified}"
 
+from models import Report  # якщо ще не імпортовано
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
@@ -129,7 +131,7 @@ def analyze():
     user_email = current_user.email
     is_pro = user_email.endswith("@pro.com")
 
-    # Limits
+    # === Зчитування usage.json ===
     usage_path = "usage.json"
     if os.path.exists(usage_path):
         with open(usage_path, "r") as f:
@@ -146,11 +148,12 @@ def analyze():
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
     try:
-        # Parse CSV
+        # === Обробка CSV ===
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         rows = list(csv.reader(stream))
         sales_data = "\n".join([", ".join(row) for row in rows])
 
+        # === GPT: Основний запит ===
         main_prompt = f"""You're an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"""
         chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -171,35 +174,43 @@ def analyze():
                 model="gpt-3.5-turbo", messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
-               # --- Рендер HTML ---
-        html = render_template("report.html", 
-                               content=result, 
+        # === Рендер HTML ===
+        html = render_template("report.html",
+                               content=result,
                                is_pro=is_pro,
-                               roi_forecast=roi_forecast, 
+                               roi_forecast=roi_forecast,
                                top_campaign=top_campaign)
 
-        # --- Створення PDF ---
-        pdf_path = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
+        # === Створення PDF ===
+        reports_dir = "reports"
+        os.makedirs(reports_dir, exist_ok=True)
+        filename = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
+        pdf_path = os.path.join(reports_dir, filename)
         pdfkit.from_string(html, pdf_path)
 
-        # --- Збереження звіту в базу, якщо користувач авторизований ---
-        if current_user.is_authenticated:
-            new_report = Report(
-                user_id=current_user.id,
-                filename=pdf_path,
-                created_at=datetime.now()
-            )
-            db.session.add(new_report)
-            db.session.commit()
+        # === Збереження звіту в базу ===
+        new_report = Report(
+            user_id=current_user.id,
+            filename=filename,  # важливо: зберігаємо лише назву
+            created_at=now
+        )
+        db.session.add(new_report)
+        db.session.commit()
 
-        # --- Відправлення PDF користувачу ---
-        return send_file(pdf_path, as_attachment=True)
+        # === Оновлення usage.json ===
+        if not is_pro:
+            user_record["reports"] += 1
+            usage_data[user_email] = user_record
+            with open(usage_path, "w") as f:
+                json.dump(usage_data, f, indent=2)
+
+        # === Відправка файлу користувачу ===
+        return send_file(os.path.abspath(pdf_path), as_attachment=True)
 
     except Exception as e:
         print("Error:", e)
         return f"Error: {e}", 500
 
-from models import Report  # якщо ще не імпортовано
 
 @app.route('/report-history')
 @login_required
@@ -207,11 +218,13 @@ def report_history():
     reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
 
+
 @app.route('/download-report/<path:filename>')
 @login_required
 def download_report(filename):
     try:
-        return send_file(filename, as_attachment=True)
+        file_path = os.path.abspath(os.path.join("reports", filename))
+        return send_file(file_path, as_attachment=True)
     except Exception as e:
         return f"Error downloading file: {e}", 500
 
