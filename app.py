@@ -199,5 +199,22 @@ def analyze():
         print("Error:", e)
         return f"Error: {e}", 500
 
+from models import Report  # якщо ще не імпортовано
+
+@app.route('/report-history')
+@login_required
+def report_history():
+    reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
+    return render_template('report_history.html', reports=reports)
+
+@app.route('/download-report/<path:filename>')
+@login_required
+def download_report(filename):
+    try:
+        return send_file(filename, as_attachment=True)
+    except Exception as e:
+        return f"Error downloading file: {e}", 500
+
+
 if __name__ == "__main__":
     app.run(debug=True)
