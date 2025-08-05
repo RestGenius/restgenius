@@ -2,58 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Your Report History</title>
+  <title>📄 Report History – RestGenius</title>
   <style>
     body {
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-      margin: 40px;
-      color: #333;
+      background: #f6f9fc;
+      margin: 0;
+      padding: 0;
     }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+    }
+
+    .top-bar a {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
     h1 {
       color: #1a73e8;
+      margin-bottom: 20px;
     }
+
     table {
       width: 100%;
-      margin-top: 20px;
       border-collapse: collapse;
+      margin-top: 20px;
     }
+
     th, td {
-      padding: 12px 16px;
-      border-bottom: 1px solid #ddd;
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
     }
-    a.download-link {
+
+    th {
+      background-color: #f1f1f1;
+      font-weight: bold;
+    }
+
+    tr:hover {
+      background-color: #f9f9f9;
+    }
+
+    .download-link {
       color: #1a73e8;
       text-decoration: none;
     }
-    a.download-link:hover {
+
+    .download-link:hover {
       text-decoration: underline;
+    }
+
+    .no-reports {
+      font-size: 16px;
+      margin-top: 20px;
+      color: #666;
     }
   </style>
 </head>
 <body>
-  <h1>📄 Your Report History</h1>
+  <div class="container">
+    <div class="top-bar">
+      <div><strong>👤 {{ current_user.email }}</strong></div>
+      <div><a href="{{ url_for('dashboard') }}">← Back to Dashboard</a></div>
+    </div>
 
-  {% if reports %}
-    <table>
-      <thead>
-        <tr>
-          <th>Filename</th>
-          <th>Created At</th>
-          <th>Download</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for report in reports %}
-        <tr>
-          <td>{{ report.filename }}</td>
-          <td>{{ report.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-          <td><a class="download-link" href="{{ url_for('download_report', filename=report.filename) }}">⬇️ Download</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>You haven't generated any reports yet.</p>
-  {% endif %}
+    <h1>📄 Your Report History</h1>
+
+    {% if reports %}
+      <table>
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Created At</th>
+            <th>Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for report in reports %}
+          <tr>
+            <td>{{ report.filename }}</td>
+            <td>{{ report.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td><a class="download-link" href="{{ url_for('download_report', filename=report.filename) }}">⬇️ Download</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="no-reports">You haven't generated any reports yet.</p>
+    {% endif %}
+  </div>
 </body>
 </html>
