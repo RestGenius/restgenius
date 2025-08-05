@@ -109,11 +109,6 @@ def logout():
     logout_user()
     return "Logged out successfully"
 
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    return f"Hello, {current_user.email} — Verified: {current_user.is_verified}"
-
 from models import Report  # якщо ще не імпортовано
 
 @app.route("/analyze", methods=["POST"])
