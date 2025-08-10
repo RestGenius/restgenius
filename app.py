@@ -15,16 +15,24 @@ from models import db, User
 
 app = Flask(__name__)
 
-# === CONFIG ===
-app.config["MAIL_SERVER"] = "smtp.gmail.com"
-app.config["MAIL_PORT"] = 587
-app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = os.getenv("EMAIL_USER")
-app.config["MAIL_PASSWORD"] = os.getenv("EMAIL_PASS")
-app.config["MAIL_DEFAULT_SENDER"] = app.config["MAIL_USERNAME"]
-app.config["MAIL_DEFAULT_SENDER"] = os.getenv("EMAIL_USER")  # 👈 Додай цей рядок
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "mysecret")
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///users.db"
+# === CONFIG (MAIL + CORE) ===
+app.config.update(
+    MAIL_SERVER="smtp.gmail.com",
+    MAIL_PORT=587,
+    MAIL_USE_TLS=True,
+    MAIL_USERNAME=os.environ.get("EMAIL_USER"),
+    MAIL_PASSWORD=os.environ.get("EMAIL_PASS"),
+    MAIL_DEFAULT_SENDER=(
+        os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")
+    ),
+    SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
+    SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
+)
+
+# Санітарна перевірка, щоб не ловити 500 на POST /register
+for k in ("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_DEFAULT_SENDER"):
+    if not app.config.get(k):
+        raise RuntimeError(f"Missing required mail config: {k}")
 
 # === INIT ===
 mail = Mail(app)
