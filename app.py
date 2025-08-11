@@ -12,8 +12,7 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta
-from models import db, User
-from models import Report  # якщо ще не імпортовано
+from models import db, User, Report  # одразу імпортуємо Report
 
 app = Flask(__name__)
 
@@ -23,7 +22,7 @@ app.config.update(
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USERNAME=os.environ.get("EMAIL_USER"),
-    MAIL_PASSWORD=os.environ.get("EMAIL_PASSWORD")
+    MAIL_PASSWORD=os.environ.get("EMAIL_PASS") or os.environ.get("EMAIL_PASSWORD"),  # підтримка двох назв ключа
     MAIL_DEFAULT_SENDER=(os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")),
     SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
