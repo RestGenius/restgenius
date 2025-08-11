@@ -1,7 +1,8 @@
-from flask import Flask, request, render_template, send_file, url_for, flash, redirect
+from flask import Flask, request, render_template, send_file, url_for, flash, redirect, send_from_directory, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import safe_join
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
 import openai
@@ -259,6 +260,23 @@ def report_history():
     reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
 
+# === SECURE DOWNLOAD ROUTE ===
+@app.route("/download-report/<path:filename>")
+@login_required
+def download_report(filename):
+    # 1) Перевіряємо, що звіт належить користувачу
+    report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
+    if not report:
+        abort(404)
+
+    # 2) Безпечний шлях до файлу (захист від traversal)
+    reports_dir = os.path.abspath("reports")
+    safe_path = safe_join(reports_dir, filename)
+    if not safe_path or not os.path.isfile(safe_path):
+        abort(404)
+
+    # 3) Віддаємо файл як завантаження
+    return send_from_directory(reports_dir, filename, as_attachment=True)
 
 @app.route("/dashboard")
 @login_required
