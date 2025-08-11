@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard – RestGenius</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,7 +12,6 @@
             margin: 0;
             padding: 0;
         }
-
         .container {
             max-width: 800px;
             margin: 40px auto;
@@ -20,11 +20,7 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-
-        h1 {
-            color: #333;
-        }
-
+        h1 { color: #333; }
         .btn {
             display: inline-block;
             padding: 10px 18px;
@@ -34,7 +30,7 @@
             border-radius: 6px;
             margin-top: 20px;
         }
-
+        .btn:focus { outline: 2px solid #0b5bd3; outline-offset: 2px; }
         .info-box {
             background: #e3f2fd;
             padding: 15px;
@@ -42,24 +38,23 @@
             margin-top: 20px;
             font-size: 16px;
         }
-
         .top-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 25px;
+            gap: 12px;
+            flex-wrap: wrap;
         }
-
         .top-bar a {
             color: #1a73e8;
             text-decoration: none;
             font-weight: bold;
         }
-
     </style>
 </head>
 <body>
-<div class="container">
+<div class="container" role="main">
     <div class="top-bar">
         <div><strong>👤 {{ current_user.email }}</strong></div>
         <div><a href="{{ url_for('logout') }}">Logout</a></div>
@@ -67,7 +62,7 @@
 
     <h1>Welcome to your Dashboard</h1>
 
-    <div class="info-box">
+    <div class="info-box" aria-live="polite">
         {% if is_pro %}
             💼 <strong>PRO Account:</strong> You have unlimited access to reports.
         {% else %}
