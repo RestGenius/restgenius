@@ -63,6 +63,15 @@
 </head>
 <body>
   <div class="form-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div>
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
     <h2>Create Your Account</h2>
     <form method="POST" action="/register">
       <input type="email" name="email" placeholder="Email address" required>
