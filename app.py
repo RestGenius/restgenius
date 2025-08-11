@@ -64,6 +64,8 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- Далі йде весь твій існуючий код без змін ---
+
 # === ROUTES ===
 @app.route("/")
 def index():
