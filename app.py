@@ -23,13 +23,22 @@ app.config.update(
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USERNAME=os.environ.get("EMAIL_USER"),
-    MAIL_PASSWORD=os.environ.get("EMAIL_PASSWORD"),
+    MAIL_PASSWORD=os.environ.get("EMAIL_PASS"),  # Використовуємо EMAIL_PASS
     MAIL_DEFAULT_SENDER=(os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")),
     SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
 )
 
-# === MAIL SOFT CHECK (не валимо застосунок, якщо пошта не налаштована) ===
+# === MAIL DIAGNOSTICS ===
+import logging
+app.logger.warning(
+    "[MAIL DIAG] USER:%s PASS:%s SENDER:%s",
+    bool(app.config.get("MAIL_USERNAME")),
+    bool(app.config.get("MAIL_PASSWORD")),
+    bool(app.config.get("MAIL_DEFAULT_SENDER")),
+)
+
+# === MAIL ENABLE CHECK ===
 MAIL_ENABLED = all((
     app.config.get("MAIL_USERNAME"),
     app.config.get("MAIL_PASSWORD"),
@@ -38,7 +47,7 @@ MAIL_ENABLED = all((
 app.config["MAIL_ENABLED"] = MAIL_ENABLED
 AUTO_VERIFY_IF_NO_MAIL = os.getenv("AUTO_VERIFY_IF_NO_MAIL", "1") == "1"
 if not MAIL_ENABLED:
-    app.logger.warning("Mail is not fully configured. Email sending is DISABLED in this environment.")
+    app.logger.warning("Mail is NOT fully configured. Email sending is DISABLED in this environment.")
 
 # === INIT ===
 mail = Mail(app)
