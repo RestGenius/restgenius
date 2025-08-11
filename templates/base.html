@@ -1,0 +1,63 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>{% block title %}RestGenius{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet" />
+  <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">⦿</div>
+        <div class="brand-title">RestGenius</div>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item {% if request.endpoint=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Overview</a>
+        <a class="nav-item {% if request.endpoint=='report_history' %}active{% endif %}" href="{{ url_for('report_history') }}">Reports</a>
+        <a class="nav-item {% if request.endpoint=='upload' %}active{% endif %}" href="{{ url_for('upload') }}">Upload CSV</a>
+        <a class="nav-item" href="#">Analytics</a>
+        <a class="nav-item" href="#">Alerts</a>
+        <a class="nav-item" href="#">Settings</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <small>© {{ datetime.utcnow().year }} RestGenius</small>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumbs">
+          {% block breadcrumb %}{% endblock %}
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="themeToggle" title="Toggle theme">☀️/🌙</button>
+          <span class="user-chip">👤 {{ current_user.email }}</span>
+          <a class="btn-ghost" href="{{ url_for('logout') }}">Logout</a>
+        </div>
+      </header>
+
+      <section class="content">
+        {% with msgs = get_flashed_messages(with_categories=True) %}
+          {% if msgs %}
+            <div class="flash-wrap">
+              {% for category, message in msgs %}
+                <div class="flash {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+  </div>
+</body>
+</html>
