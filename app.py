@@ -75,23 +75,25 @@ def register():
         link = url_for('confirm_email', token=token, _external=True)
 
         msg = Message(
-    "Confirm your email",
-    sender=app.config["MAIL_DEFAULT_SENDER"],  # ← ключова зміна!
-    recipients=[email],
-)
-msg.html = f"""
-<h3>Welcome to RestGenius!</h3>
-<p>Click the button below to verify your email and start using your account:</p>
-<a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
-"""
+            "Confirm your email",
+            sender=app.config["MAIL_DEFAULT_SENDER"],  # ключове
+            recipients=[email],
+        )
+        msg.html = f"""
+        <h3>Welcome to RestGenius!</h3>
+        <p>Click the button below to verify your email and start using your account:</p>
+        <a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
+        """
 
-try:
-    mail.send(msg)
-except Exception as e:
-    app.logger.exception("Mail send failed")
-    return "We couldn't send the confirmation email right now. Please try again later.", 200
+        try:
+            mail.send(msg)
+        except Exception as e:
+            app.logger.exception("Mail send failed")
+            # Можеш повернути дружнє повідомлення або флеш
+            return "We couldn't send the confirmation email right now. Please try again later.", 200
 
         return "✅ Registration successful. Please check your email to confirm."
+
     return render_template("register.html")
 
 @app.route("/confirm/<token>")
