@@ -1,0 +1,112 @@
+/* static/css/app.css */
+
+/* ===== Theme tokens ===== */
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-elev: #1d212a;
+  --text: #e8edf7;
+  --muted: #9aa3b2;
+  --brand: #4cc3ff;
+  --accent: #7ce7d7;
+  --border: #2a2f3a;
+  --success: #3ddc97;
+  --warning: #ffb020;
+  --danger: #ff647c;
+  --shadow: 0 6px 20px rgba(0,0,0,.35);
+  --radius: 12px;
+}
+
+[data-theme="light"] {
+  --bg: #f6f9fc;
+  --panel: #ffffff;
+  --panel-elev: #ffffff;
+  --text: #0e1726;
+  --muted: #445063;
+  --brand: #1a73e8;
+  --accent: #0fb9b1;
+  --border: #e6eaf1;
+  --shadow: 0 8px 20px rgba(2,10,24,.08);
+}
+
+/* ===== Layout ===== */
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+.layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+
+.sidebar {
+  background: var(--panel); border-right: 1px solid var(--border); padding: 16px;
+  display: grid; grid-template-rows: auto 1fr auto; gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 8px; }
+.logo { width: 28px; height: 28px; display:grid; place-items:center; border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand), var(--accent)); color:#001018; font-weight: 800; }
+.brand-title { font-weight: 700; letter-spacing: .3px; }
+
+.nav { display: grid; gap: 6px; margin-top: 8px; }
+.nav-item {
+  color: var(--muted); text-decoration: none; padding: 10px 12px; border-radius: 10px; display: block;
+}
+.nav-item:hover { background: var(--panel-elev); color: var(--text); }
+.nav-item.active { background: var(--panel-elev); color: var(--text); border: 1px solid var(--border); }
+
+.sidebar-footer { color: var(--muted); padding: 8px 12px; }
+
+.main { display: grid; grid-template-rows: auto 1fr; }
+.topbar {
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; gap: 12px;
+}
+.breadcrumbs { color: var(--muted); }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.icon-btn {
+  border: 1px solid var(--border); background: var(--panel-elev); color: var(--text);
+  padding: 6px 10px; border-radius: 8px; cursor: pointer;
+}
+.btn-ghost { color: var(--muted); text-decoration: none; border:1px solid var(--border);
+  padding:6px 10px; border-radius:8px; }
+.user-chip { color: var(--muted); }
+
+.content { padding: 22px; }
+
+/* ===== Cards & grids ===== */
+.grid { display: grid; gap: 16px; }
+.grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1100px) { .grid.cols-3 { grid-template-columns: 1fr; } .grid.cols-2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px;
+}
+.card h3 { margin: 0 0 10px; font-size: 16px; }
+.kpi { display:flex; gap:16px; }
+.kpi .box {
+  background: var(--panel-elev); border:1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 140px;
+}
+.kpi .value { font-size: 22px; font-weight: 700; }
+.kpi .label { color: var(--muted); font-size: 12px; }
+
+.flash-wrap { margin-bottom: 12px; }
+.flash { background: var(--panel-elev); border:1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.flash.success { border-color: rgba(61,220,151,.4); }
+.flash.warning { border-color: rgba(255,176,32,.4); }
+.flash.danger  { border-color: rgba(255,100,124,.4); }
+
+/* ===== Table ===== */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  padding: 12px 14px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap;
+}
+.table th { color: var(--muted); font-weight: 600; background: var(--panel-elev); }
+.table tr:hover { background: rgba(255,255,255,.02); }
+
+/* ===== Buttons ===== */
+.btn {
+  display:inline-block; padding:10px 14px; border-radius:10px; text-decoration:none;
+  background: var(--brand); color:#001018; font-weight: 700; border: 0;
+}
+.btn.secondary { background: var(--panel-elev); color: var(--text); border:1px solid var(--border); }
