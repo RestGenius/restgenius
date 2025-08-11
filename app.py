@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, send_file, url_for, flash
+from flask import Flask, request, render_template, send_file, url_for, flash, redirect
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,6 +12,7 @@ import io
 import json
 from datetime import datetime, timedelta
 from models import db, User
+from models import Report  # якщо ще не імпортовано
 
 app = Flask(__name__)
 
@@ -22,17 +23,21 @@ app.config.update(
     MAIL_USE_TLS=True,
     MAIL_USERNAME=os.environ.get("EMAIL_USER"),
     MAIL_PASSWORD=os.environ.get("EMAIL_PASS"),
-    MAIL_DEFAULT_SENDER=(
-        os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")
-    ),
+    MAIL_DEFAULT_SENDER=(os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")),
     SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
 )
 
-# Санітарна перевірка, щоб не ловити 500 на POST /register
-for k in ("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_DEFAULT_SENDER"):
-    if not app.config.get(k):
-        raise RuntimeError(f"Missing required mail config: {k}")
+# === MAIL SOFT CHECK (не валимо застосунок, якщо пошта не налаштована) ===
+MAIL_ENABLED = all((
+    app.config.get("MAIL_USERNAME"),
+    app.config.get("MAIL_PASSWORD"),
+    app.config.get("MAIL_DEFAULT_SENDER"),
+))
+app.config["MAIL_ENABLED"] = MAIL_ENABLED
+AUTO_VERIFY_IF_NO_MAIL = os.getenv("AUTO_VERIFY_IF_NO_MAIL", "1") == "1"
+if not MAIL_ENABLED:
+    app.logger.warning("Mail is not fully configured. Email sending is DISABLED in this environment.")
 
 # === INIT ===
 mail = Mail(app)
@@ -69,30 +74,37 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
-        # Email confirmation
-        s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-        token = s.dumps(email, salt="email-confirm")
-        link = url_for('confirm_email', token=token, _external=True)
+        if app.config["MAIL_ENABLED"]:
+            # Email confirmation
+            s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+            token = s.dumps(email, salt="email-confirm")
+            link = url_for('confirm_email', token=token, _external=True)
 
-        msg = Message(
-            "Confirm your email",
-            sender=app.config["MAIL_DEFAULT_SENDER"],  # ключове
-            recipients=[email],
-        )
-        msg.html = f"""
-        <h3>Welcome to RestGenius!</h3>
-        <p>Click the button below to verify your email and start using your account:</p>
-        <a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
-        """
+            msg = Message(
+                "Confirm your email",
+                sender=app.config["MAIL_DEFAULT_SENDER"],
+                recipients=[email],
+            )
+            msg.html = f"""
+            <h3>Welcome to RestGenius!</h3>
+            <p>Click the button below to verify your email and start using your account:</p>
+            <a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
+            """
 
-        try:
-            mail.send(msg)
-        except Exception as e:
-            app.logger.exception("Mail send failed")
-            # Можеш повернути дружнє повідомлення або флеш
-            return "We couldn't send the confirmation email right now. Please try again later.", 200
-
-        return "✅ Registration successful. Please check your email to confirm."
+            try:
+                mail.send(msg)
+                return "✅ Registration successful. Please check your email to confirm."
+            except Exception as e:
+                app.logger.exception("Mail send failed")
+                return "We couldn't send the confirmation email right now. Please try again later.", 200
+        else:
+            # DEV-потік: пошта не налаштована — авто-верифікація (можна вимкнути через ENV)
+            if AUTO_VERIFY_IF_NO_MAIL:
+                new_user.is_verified = True
+                db.session.commit()
+                return "✅ Registration successful (dev mode). Email auto-verified. You can log in now."
+            else:
+                return "✅ Registration successful. Email verification is disabled on this environment.", 200
 
     return render_template("register.html")
 
@@ -121,7 +133,7 @@ def login():
         if not user.is_verified:
             return "❗ Please verify your email before logging in."
         login_user(user)
-        return "Login successful"
+        return redirect(url_for("dashboard"))
     return render_template("login.html")
 
 @app.route("/logout")
@@ -129,8 +141,6 @@ def login():
 def logout():
     logout_user()
     return "Logged out successfully"
-
-from models import Report  # якщо ще не імпортовано
 
 @app.route("/analyze", methods=["POST"])
 @login_required
@@ -183,31 +193,46 @@ def analyze():
             campaign_prompt = f"Suggest a campaign:\n{sales_data}"
 
             roi_forecast = openai.chat.completions.create(
-                model="gpt-3.5-turbo", messages=[{"role": "user", "content": roi_prompt}]
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": roi_prompt}]
             ).choices[0].message.content.strip()
 
             top_campaign = openai.chat.completions.create(
-                model="gpt-3.5-turbo", messages=[{"role": "user", "content": campaign_prompt}]
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
         # === Рендер HTML ===
-        html = render_template("report.html",
-                               content=result,
-                               is_pro=is_pro,
-                               roi_forecast=roi_forecast,
-                               top_campaign=top_campaign)
+        html = render_template(
+            "report.html",
+            content=result,
+            is_pro=is_pro,
+            roi_forecast=roi_forecast,
+            top_campaign=top_campaign
+        )
 
         # === Створення PDF ===
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
         filename = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
         pdf_path = os.path.join(reports_dir, filename)
-        pdfkit.from_string(html, pdf_path)
+
+        try:
+            pdfkit.from_string(html, pdf_path)
+            # === Відправка файлу користувачу ===
+            file_to_send = os.path.abspath(pdf_path)
+        except Exception as e:
+            # Якщо немає wkhtmltopdf — збережемо HTML як fallback
+            app.logger.exception("pdfkit failed; falling back to HTML report")
+            html_fallback = os.path.join(reports_dir, filename.replace(".pdf", ".html"))
+            with open(html_fallback, "w", encoding="utf-8") as f:
+                f.write(html)
+            file_to_send = os.path.abspath(html_fallback)
 
         # === Збереження звіту в базу ===
         new_report = Report(
             user_id=current_user.id,
-            filename=filename,  # важливо: зберігаємо лише назву
+            filename=os.path.basename(file_to_send),  # зберігаємо назву
             created_at=now
         )
         db.session.add(new_report)
@@ -221,10 +246,10 @@ def analyze():
                 json.dump(usage_data, f, indent=2)
 
         # === Відправка файлу користувачу ===
-        return send_file(os.path.abspath(pdf_path), as_attachment=True)
+        return send_file(file_to_send, as_attachment=True)
 
     except Exception as e:
-        print("Error:", e)
+        app.logger.exception("Analyze failed")
         return f"Error: {e}", 500
 
 
@@ -255,8 +280,16 @@ def dashboard():
         user_record = {"reports": 0, "last_reset": now.isoformat()}
 
     remaining_reports = "Unlimited" if is_pro else max(0, 3 - user_record["reports"])
-
     return render_template("dashboard.html", is_pro=is_pro, remaining_reports=remaining_reports)
+
+# healthcheck
+@app.route("/healthz")
+def healthz():
+    try:
+        db.session.execute("SELECT 1")
+        return "ok", 200
+    except Exception as e:
+        return f"db error: {e}", 500
 
 
 if __name__ == "__main__":
