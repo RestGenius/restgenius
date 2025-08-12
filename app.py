@@ -8,6 +8,7 @@ from flask_login import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import safe_join
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
 from openai import OpenAI
@@ -32,6 +33,10 @@ app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
 )
+
+# Ліміт розміру аплоада (за замовчуванням 10 МБ, змінити через MAX_UPLOAD_MB)
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "10"))
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 # === MAIL CHECK ===
 MAIL_ENABLED = all((
@@ -66,19 +71,24 @@ client = OpenAI(api_key=raw_key)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# === Helper: Check and Reset Limits ===
+# === Helpers ===
 def check_and_reset_limits(user: User):
-    """
-    Скидає лічильники безкоштовних звітів кожні 14 днів.
-    """
+    """Скидає лічильники безкоштовних звітів кожні 14 днів."""
     now = datetime.utcnow()
     if not user.free_reports_reset or (now - user.free_reports_reset) > timedelta(days=14):
         user.free_reports_used = 0
         user.free_reports_reset = now
         db.session.commit()
+        app.logger.info("[LIMIT] reset user_id=%s", user.id)
 
 def _allowed_csv(filename: str) -> bool:
     return filename.lower().endswith(".csv")
+
+def _toast_redirect(message_cookie: str = "rg_error"):
+    """Редірект на дашборд з коротким toast-прапорцем у кукі."""
+    resp = redirect(url_for("dashboard"))
+    resp.set_cookie(message_cookie, "1", max_age=300, samesite="Lax")
+    return resp
 
 # === ROUTES ===
 @app.route("/")
@@ -121,7 +131,7 @@ def register():
                 mail.send(msg)
                 return "✅ Registration successful. Please check your email to confirm."
             except Exception:
-                app.logger.exception("Mail send failed")
+                app.logger.exception("[MAIL] send failed")
                 return "We couldn't send the confirmation email right now. Please try again later.", 200
         else:
             if AUTO_VERIFY_IF_NO_MAIL:
@@ -167,6 +177,31 @@ def logout():
     logout_user()
     return "Logged out successfully"
 
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    app.logger.warning("[UPLOAD] too_large user_id=%s max_mb=%s", getattr(current_user, "id", None), MAX_UPLOAD_MB)
+    # 413 → редірект і toast
+    return _toast_redirect("rg_err_size")
+
+@app.route("/sample-csv")
+@login_required
+def sample_csv():
+    """Віддає приклад CSV для швидкого тесту."""
+    sample = io.StringIO()
+    writer = csv.writer(sample)
+    writer.writerow(["date", "item", "category", "qty", "price"])
+    writer.writerow(["2025-08-01", "Margherita Pizza", "Food", "14", "9.90"])
+    writer.writerow(["2025-08-01", "Cappuccino", "Beverage", "23", "3.50"])
+    writer.writerow(["2025-08-02", "Caesar Salad", "Food", "9", "7.50"])
+    writer.writerow(["2025-08-02", "Lemonade", "Beverage", "15", "2.80"])
+    writer.writerow(["2025-08-03", "Tiramisu", "Dessert", "11", "4.20"])
+    data = sample.getvalue().encode("utf-8")
+    fname = "restgenius_sample.csv"
+    resp = make_response(data)
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = f'attachment; filename="{fname}"'
+    return resp
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
@@ -182,20 +217,24 @@ def analyze():
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
     if 'file' not in request.files:
-        return "No file uploaded", 400
+        return _toast_redirect("rg_err_no_file")
 
     file = request.files['file']
     if not file or file.filename == '':
-        return "No file selected", 400
+        return _toast_redirect("rg_err_no_file")
     if not _allowed_csv(file.filename):
-        return "File must be a CSV", 400
+        return _toast_redirect("rg_err_type")
+
+    if not raw_key:
+        app.logger.error("[OPENAI] missing_api_key user_id=%s", current_user.id)
+        return _toast_redirect("rg_err_auth")
 
     try:
         # Прочитали CSV
         stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
         rows = list(csv.reader(stream))
         if not rows:
-            return "CSV is empty", 400
+            return _toast_redirect("rg_err_empty")
 
         # (опційно) обмежити розмір для безпеки
         rows = rows[:5000]
@@ -276,8 +315,8 @@ def analyze():
             pdfkit.from_string(html, pdf_path, options=options)
             file_to_send = os.path.abspath(pdf_path)
             stored_name = f"{filename_base}.pdf"
-        except Exception:
-            app.logger.exception("pdfkit failed; falling back to HTML")
+        except Exception as pdf_err:
+            app.logger.exception("[PDFKIT] failed; fallback to HTML. Hint: ensure wkhtmltopdf is installed on host. err=%s", pdf_err)
             html_fallback = os.path.join(reports_dir, f"{filename_base}.html")
             with open(html_fallback, "w", encoding="utf-8") as f:
                 f.write(html)
@@ -297,24 +336,47 @@ def analyze():
             current_user.free_reports_used = (current_user.free_reports_used or 0) + 1
 
         db.session.commit()
+        app.logger.info("[REPORT] generated user_id=%s file=%s", current_user.id, stored_name)
 
         # Віддаємо файл + ставимо кукі для toast на дашборді
         response = send_file(file_to_send, as_attachment=True)
-        # кукі живе 5 хв; дашборд зчитає і прибере
         response.set_cookie("rg_generated", "1", max_age=300, samesite="Lax")
         return response
 
-    except Exception:
-        app.logger.exception("Analyze failed")
-        # не віддаємо користувачу внутрішній стек/ключі
-        return "Internal error while generating the report. Please try again.", 500
+    except Exception as e:
+        msg = str(e).lower()
+        if "401" in msg or "invalid api key" in msg:
+            app.logger.error("[OPENAI] auth_error user_id=%s err=%s", current_user.id, e)
+            return _toast_redirect("rg_err_auth")
+        if "429" in msg or "rate limit" in msg:
+            app.logger.error("[OPENAI] rate_limited user_id=%s err=%s", current_user.id, e)
+            return _toast_redirect("rg_err_rate")
+        if "timeout" in msg:
+            app.logger.error("[OPENAI] timeout user_id=%s err=%s", current_user.id, e)
+            return _toast_redirect("rg_err_timeout")
+
+        app.logger.exception("[ANALYZE] failed user_id=%s", current_user.id)
+        return _toast_redirect("rg_error")
 
 @app.route('/report-history')
 @login_required
 def report_history():
-    reports = Report.query.filter_by(user_id=current_user.id)\
-        .order_by(Report.created_at.desc()).all()
-    return render_template('report_history.html', reports=reports)
+    # Пагінація: 20/стор.
+    page = max(1, int(request.args.get("page", 1)))
+    per_page = 20
+    q = Report.query.filter_by(user_id=current_user.id)
+    total = q.count()
+    reports = q.order_by(Report.created_at.desc())\
+               .offset((page - 1) * per_page)\
+               .limit(per_page).all()
+
+    has_prev = page > 1
+    has_next = (page * per_page) < total
+    return render_template(
+        'report_history.html',
+        reports=reports, page=page, per_page=per_page, total=total,
+        has_prev=has_prev, has_next=has_next
+    )
 
 @app.route("/download-report/<path:filename>")
 @login_required
@@ -335,9 +397,7 @@ def download_report(filename):
 @app.route("/preview-report/<path:filename>")
 @login_required
 def preview_report(filename):
-    """
-    Віддає звіт inline для вбудованого перегляду (iframe).
-    """
+    """Віддає звіт inline для вбудованого перегляду (iframe)."""
     report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
     if not report:
         abort(404)
@@ -347,7 +407,6 @@ def preview_report(filename):
     if not safe_path or not os.path.isfile(safe_path):
         abort(404)
 
-    # inline замість завантаження
     return send_from_directory(reports_dir, filename, as_attachment=False)
 
 @app.route("/dashboard")
@@ -355,7 +414,6 @@ def preview_report(filename):
 def dashboard():
     check_and_reset_limits(current_user)
     remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - (current_user.free_reports_used or 0))
-    # дістаємо останній звіт користувача
     last_report = Report.query.filter_by(user_id=current_user.id)\
         .order_by(Report.created_at.desc()).first()
 
@@ -363,7 +421,8 @@ def dashboard():
         "dashboard.html",
         is_pro=current_user.is_pro,
         remaining_reports=remaining_reports,
-        last_report=last_report
+        last_report=last_report,
+        max_upload_mb=MAX_UPLOAD_MB
     )
 
 @app.route("/healthz")
@@ -376,10 +435,6 @@ def healthz():
 
 @app.route("/healthz/openai")
 def healthz_openai():
-    """
-    Діагностичний пінг до OpenAI. Може згенерувати мінімальні витрати.
-    Видали в проді, якщо не потрібен.
-    """
     try:
         client.chat.completions.create(
             model="gpt-3.5-turbo",
