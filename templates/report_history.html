@@ -24,6 +24,9 @@
     tbody td { border-bottom:1px solid var(--border); padding:10px; font-size:14px; }
     tbody tr:hover { background:#fafafa; }
     .small { font-size:12px; color:var(--muted); }
+
+    .pager { display:flex; justify-content:space-between; align-items:center; margin-top:14px; }
+    .pager .info { font-size:13px; color:var(--muted); }
   </style>
 </head>
 <body>
@@ -61,6 +64,20 @@
         {% endfor %}
         </tbody>
       </table>
+
+      <div class="pager">
+        <div>
+          {% if has_prev %}
+            <a class="btn" href="{{ url_for('report_history', page=page-1) }}">&larr; Prev</a>
+          {% endif %}
+        </div>
+        <div class="info">Page {{ page }}{% if total %} • Total: {{ total }}{% endif %}</div>
+        <div>
+          {% if has_next %}
+            <a class="btn" href="{{ url_for('report_history', page=page+1) }}">Next &rarr;</a>
+          {% endif %}
+        </div>
+      </div>
     {% else %}
       <p class="muted">No reports yet. Go to the Dashboard and generate your first report.</p>
     {% endif %}
