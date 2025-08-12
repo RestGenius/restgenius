@@ -1,6 +1,6 @@
 from flask import (
     Flask, request, render_template, send_file, url_for,
-    redirect, send_from_directory, abort
+    redirect, send_from_directory, abort, make_response
 )
 from flask_login import (
     LoginManager, login_user, login_required,
@@ -208,7 +208,7 @@ def analyze():
             "Using the SALES CSV below, return a CLEAN HTML FRAGMENT (no <html> or <body>) "
             "with these sections using <h2>, <p>, and <ul><li>: "
             "1) Executive Summary, 2) Key Insights, 3) Quick Wins, 4) Next Actions. "
-            "Keep it concise and scannable. English only.\n\n"
+            "Do not use emojis. Keep it concise and scannable. English only.\n\n"
             "SALES CSV:\n"
             f"{sales_data}"
         )
@@ -298,8 +298,11 @@ def analyze():
 
         db.session.commit()
 
-        # Віддаємо файл
-        return send_file(file_to_send, as_attachment=True)
+        # Віддаємо файл + ставимо кукі для toast на дашборді
+        response = send_file(file_to_send, as_attachment=True)
+        # кукі живе 5 хв; дашборд зчитає і прибере
+        response.set_cookie("rg_generated", "1", max_age=300, samesite="Lax")
+        return response
 
     except Exception:
         app.logger.exception("Analyze failed")
@@ -329,12 +332,39 @@ def download_report(filename):
 
     return send_from_directory(reports_dir, filename, as_attachment=True)
 
+@app.route("/preview-report/<path:filename>")
+@login_required
+def preview_report(filename):
+    """
+    Віддає звіт inline для вбудованого перегляду (iframe).
+    """
+    report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
+    if not report:
+        abort(404)
+
+    reports_dir = os.path.abspath("reports")
+    safe_path = safe_join(reports_dir, filename)
+    if not safe_path or not os.path.isfile(safe_path):
+        abort(404)
+
+    # inline замість завантаження
+    return send_from_directory(reports_dir, filename, as_attachment=False)
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
     check_and_reset_limits(current_user)
     remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - (current_user.free_reports_used or 0))
-    return render_template("dashboard.html", is_pro=current_user.is_pro, remaining_reports=remaining_reports)
+    # дістаємо останній звіт користувача
+    last_report = Report.query.filter_by(user_id=current_user.id)\
+        .order_by(Report.created_at.desc()).first()
+
+    return render_template(
+        "dashboard.html",
+        is_pro=current_user.is_pro,
+        remaining_reports=remaining_reports,
+        last_report=last_report
+    )
 
 @app.route("/healthz")
 def healthz():
@@ -351,7 +381,7 @@ def healthz_openai():
     Видали в проді, якщо не потрібен.
     """
     try:
-        resp = client.chat.completions.create(
+        client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=1,
