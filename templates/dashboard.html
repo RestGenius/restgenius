@@ -131,7 +131,11 @@
 
         {% if not is_pro %}
           <div style="margin-top:12px;">
-            <a class="btn primary" href="#" onclick="alert('Upgrade flow coming soon'); return false;">Upgrade to PRO</a>
+            {% if dev_token %}
+              <a class="btn primary" href="{{ url_for('upgrade_dev') }}?token={{ dev_token }}">Upgrade to PRO (dev)</a>
+            {% else %}
+              <a class="btn primary" href="#" onclick="alert('Set DEV_UPGRADE_TOKEN on server to enable dev-upgrade'); return false;">Upgrade to PRO</a>
+            {% endif %}
           </div>
         {% endif %}
       </aside>
@@ -139,6 +143,7 @@
   </main>
 
   <!-- Toasts -->
+  <div id="rg-toast-upgraded" class="toast ok">🎉 Upgraded to PRO. Enjoy unlimited reports.</div>
   <div id="rg-toast-ok" class="toast ok">✅ Report generated and downloaded.</div>
   <div id="rg-toast-err" class="toast err">❌ There was a problem generating your report. Please try again.</div>
   <div id="rg-toast-err-size" class="toast err">❌ File is too large. Max size: {{ max_upload_mb }} MB.</div>
@@ -149,41 +154,17 @@
 
   <script>
     (function() {
-      function getCookie(name) {
-        const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-        return m ? decodeURIComponent(m[2]) : null;
-      }
-      function clearCookie(name) {
-        document.cookie = name + '=; Max-Age=0; path=/; samesite=Lax';
-      }
-      function show(id) {
-        const el = document.getElementById(id);
-        if (el) {
-          el.classList.add('show');
-          setTimeout(() => el.classList.remove('show'), 3500);
-        }
-      }
+      function getCookie(name){const m=document.cookie.match(new RegExp('(^| )'+name+'=([^;]+)'));return m?decodeURIComponent(m[2]):null;}
+      function clearCookie(name){document.cookie=name+'=; Max-Age=0; path=/; samesite=Lax';}
+      function show(id){const el=document.getElementById(id); if(el){el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),3500);}}
 
       // success
-      if (getCookie('rg_generated') === '1') { show('rg-toast-ok'); clearCookie('rg_generated'); }
+      if (getCookie('rg_generated')==='1'){ show('rg-toast-ok'); clearCookie('rg_generated'); }
+      if (getCookie('rg_upgraded')==='1'){ show('rg-toast-upgraded'); clearCookie('rg_upgraded'); }
 
       // errors
-      const errs = [
-        ['rg_error','rg-toast-err'],
-        ['rg_err_size','rg-toast-err-size'],
-        ['rg_err_auth','rg-toast-err-auth'],
-        ['rg_err_rate','rg-toast-err-rate'],
-        ['rg_err_timeout','rg-toast-err-timeout'],
-        ['rg_err_no_file','rg-toast-err-nofile'],
-        ['rg_err_type','rg-toast-err-nofile'],
-        ['rg_err_empty','rg-toast-err'],
-      ];
-      errs.forEach(([cookie, toastId]) => {
-        if (getCookie(cookie) === '1') {
-          show(toastId);
-          clearCookie(cookie);
-        }
-      });
+      const errs=[['rg_error','rg-toast-err'],['rg_err_size','rg-toast-err-size'],['rg_err_auth','rg-toast-err-auth'],['rg_err_rate','rg-toast-err-rate'],['rg_err_timeout','rg-toast-err-timeout'],['rg_err_no_file','rg-toast-err-nofile'],['rg_err_type','rg-toast-err-nofile'],['rg_err_empty','rg-toast-err']];
+      errs.forEach(([c,id])=>{ if(getCookie(c)==='1'){ show(id); clearCookie(c);} });
     })();
   </script>
 </body>
