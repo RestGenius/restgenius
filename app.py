@@ -165,6 +165,45 @@ def confirm_email(token):
     db.session.commit()
     return "✅ Email confirmed! You can now log in."
 
+@app.route("/resend-confirmation", methods=["POST"])
+@login_required
+def resend_confirmation():
+    # Уже підтверджений?
+    if current_user.is_verified:
+        return _toast_redirect("rg_confirm_already")
+
+    # Пошта не налаштована
+    if not MAIL_ENABLED:
+        if AUTO_VERIFY_IF_NO_MAIL:
+            current_user.is_verified = True
+            db.session.commit()
+            app.logger.warning("[MAIL] disabled; auto-verified user_id=%s", current_user.id)
+            return _toast_redirect("rg_auto_verified")
+        return _toast_redirect("rg_confirm_err")
+
+    try:
+        s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+        token = s.dumps(current_user.email, salt="email-confirm")
+        link = url_for('confirm_email', token=token, _external=True)
+        ttl_hours = int(int(os.getenv("CONFIRM_MAX_AGE_SECONDS", "172800")) / 3600)
+
+        msg = Message(
+            "Confirm your email",
+            sender=app.config["MAIL_DEFAULT_SENDER"],
+            recipients=[current_user.email],
+        )
+        msg.html = f"""
+        <h3>Confirm your email</h3>
+        <p>Click the button below to verify your email:</p>
+        <a href="{link}" style="padding:10px 20px; background:#1a73e8; color:#fff; text-decoration:none; border-radius:6px;">✅ Confirm Email</a>
+        <p style="color:#475569; font-size:13px; margin-top:8px;">Link is valid for up to {ttl_hours} hours.</p>
+        """
+        mail.send(msg)
+        return _toast_redirect("rg_confirm_sent")
+    except Exception as e:
+        app.logger.exception("[MAIL] resend failed user_id=%s err=%s", current_user.id, e)
+        return _toast_redirect("rg_confirm_err")
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -227,57 +266,17 @@ def upgrade_dev():
     resp.set_cookie("rg_upgraded", "1", max_age=300, samesite="Lax")
     return resp
 
-# === RESEND CONFIRMATION ===
-@app.route("/resend-confirmation", methods=["POST"])
-@login_required
-def resend_confirmation():
-    # Уже підтверджений?
-    if current_user.is_verified:
-        return _toast_redirect("rg_confirm_already")
-
-    # Пошта не налаштована
-    if not MAIL_ENABLED:
-        if AUTO_VERIFY_IF_NO_MAIL:
-            current_user.is_verified = True
-            db.session.commit()
-            app.logger.warning("[MAIL] disabled; auto-verified user_id=%s", current_user.id)
-            return _toast_redirect("rg_auto_verified")
-        return _toast_redirect("rg_confirm_err")
-
-    try:
-        s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-        token = s.dumps(current_user.email, salt="email-confirm")
-        link = url_for('confirm_email', token=token, _external=True)
-        ttl_hours = int(int(os.getenv("CONFIRM_MAX_AGE_SECONDS", "172800")) / 3600)
-
-        msg = Message(
-            "Confirm your email",
-            sender=app.config["MAIL_DEFAULT_SENDER"],
-            recipients=[current_user.email],
-        )
-        msg.html = f"""
-        <h3>Confirm your email</h3>
-        <p>Click the button below to verify your email:</p>
-        <a href="{link}" style="padding:10px 20px; background:#1a73e8; color:#fff; text-decoration:none; border-radius:6px;">✅ Confirm Email</a>
-        <p style="color:#475569; font-size:13px; margin-top:8px;">Link is valid for up to {ttl_hours} hours.</p>
-        """
-        mail.send(msg)
-        return _toast_redirect("rg_confirm_sent")
-    except Exception as e:
-        app.logger.exception("[MAIL] resend failed user_id=%s err=%s", current_user.id, e)
-        return _toast_redirect("rg_confirm_err")
-
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
-    # Перевірка верифікації
+    # Перевірка верифікації → toast і редірект (щоб не губитись на 403)
     if not current_user.is_verified:
-        return "❌ Please verify your email before using this feature.", 403
+        return _toast_redirect("rg_confirm_needed")
 
     # Скидання/перевірка лімітів
     check_and_reset_limits(current_user)
 
-    # Ліміт для FREE (3 звіти / 14 днів) — тепер редірект з toast, а не 403-сторінка
+    # Ліміт для FREE (3 звіти / 14 днів) — редірект з toast
     if not current_user.is_pro and (current_user.free_reports_used or 0) >= 3:
         return _toast_redirect("rg_err_limit")
 
@@ -295,8 +294,16 @@ def analyze():
         return _toast_redirect("rg_err_auth")
 
     try:
-        # Прочитали CSV
-        stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
+        # Прочитали CSV як bytes і декодували UTF-8 (із BOM), інакше показали тост encoding
+        raw_bytes = file.read()
+        if not raw_bytes:
+            return _toast_redirect("rg_err_empty")
+        try:
+            text = raw_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return _toast_redirect("rg_err_encoding")
+
+        stream = io.StringIO(text, newline=None)
         rows = list(csv.reader(stream))
         if not rows:
             return _toast_redirect("rg_err_empty")
