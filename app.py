@@ -10,13 +10,11 @@ import pdfkit
 import os
 import csv
 import io
-import json
 from datetime import datetime, timedelta
 from models import db, User, Report
 
+# === APP CONFIG ===
 app = Flask(__name__)
-
-# === CONFIG (MAIL + CORE) ===
 app.config.update(
     MAIL_SERVER="smtp.gmail.com",
     MAIL_PORT=587,
@@ -28,24 +26,15 @@ app.config.update(
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
 )
 
-# === MAIL DIAGNOSTICS ===
-app.logger.warning(
-    "[MAIL DIAG] USER:%s PASS:%s SENDER:%s",
-    bool(app.config.get("MAIL_USERNAME")),
-    bool(app.config.get("MAIL_PASSWORD")),
-    bool(app.config.get("MAIL_DEFAULT_SENDER")),
-)
-
-# === MAIL ENABLE CHECK ===
+# === MAIL CHECK ===
 MAIL_ENABLED = all((
     app.config.get("MAIL_USERNAME"),
     app.config.get("MAIL_PASSWORD"),
     app.config.get("MAIL_DEFAULT_SENDER"),
 ))
-app.config["MAIL_ENABLED"] = MAIL_ENABLED
 AUTO_VERIFY_IF_NO_MAIL = os.getenv("AUTO_VERIFY_IF_NO_MAIL", "1") == "1"
 if not MAIL_ENABLED:
-    app.logger.warning("Mail is NOT fully configured. Email sending is DISABLED in this environment.")
+    app.logger.warning("Mail is NOT fully configured. Email sending is DISABLED.")
 
 # === INIT ===
 mail = Mail(app)
@@ -59,14 +48,26 @@ with app.app_context():
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROUTES ---
+
+# === Helper: Check and Reset Limits ===
+def check_and_reset_limits(user):
+    now = datetime.utcnow()
+    if not user.free_reports_reset or (now - user.free_reports_reset) > timedelta(days=14):
+        user.free_reports_used = 0
+        user.free_reports_reset = now
+        db.session.commit()
+
+
+# === ROUTES ===
 @app.route("/")
 def index():
     return render_template("index.html")
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -82,7 +83,7 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
-        if app.config["MAIL_ENABLED"]:
+        if MAIL_ENABLED:
             s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
             token = s.dumps(email, salt="email-confirm")
             link = url_for('confirm_email', token=token, _external=True)
@@ -94,14 +95,13 @@ def register():
             )
             msg.html = f"""
             <h3>Welcome to RestGenius!</h3>
-            <p>Click the button below to verify your email and start using your account:</p>
+            <p>Click the button below to verify your email:</p>
             <a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
             """
-
             try:
                 mail.send(msg)
                 return "✅ Registration successful. Please check your email to confirm."
-            except Exception as e:
+            except Exception:
                 app.logger.exception("Mail send failed")
                 return "We couldn't send the confirmation email right now. Please try again later.", 200
         else:
@@ -110,9 +110,10 @@ def register():
                 db.session.commit()
                 return "✅ Registration successful (dev mode). Email auto-verified. You can log in now."
             else:
-                return "✅ Registration successful. Email verification is disabled on this environment.", 200
+                return "✅ Registration successful. Email verification is disabled.", 200
 
     return render_template("register.html")
+
 
 @app.route("/confirm/<token>")
 def confirm_email(token):
@@ -128,6 +129,7 @@ def confirm_email(token):
     except Exception as e:
         return f"❌ Invalid or expired link: {e}"
 
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -142,11 +144,13 @@ def login():
         return redirect(url_for("dashboard"))
     return render_template("login.html")
 
+
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return "Logged out successfully"
+
 
 @app.route("/analyze", methods=["POST"])
 @login_required
@@ -154,36 +158,25 @@ def analyze():
     if not current_user.is_verified:
         return "❌ Please verify your email before using this feature.", 403
 
+    # Reset limits if needed
+    check_and_reset_limits(current_user)
+
+    # Limit check
+    if not current_user.is_pro and current_user.free_reports_used >= 3:
+        return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
+
     if 'file' not in request.files:
         return "No file uploaded", 400
     file = request.files['file']
     if file.filename == '' or not file.filename.endswith('.csv'):
         return "File must be a CSV", 400
 
-    user_email = current_user.email
-    is_pro = user_email.endswith("@pro.com")
-
-    usage_path = "usage.json"
-    if os.path.exists(usage_path):
-        with open(usage_path, "r") as f:
-            usage_data = json.load(f)
-    else:
-        usage_data = {}
-
-    now = datetime.now()
-    user_record = usage_data.get(user_email, {"reports": 0, "last_reset": now.isoformat()})
-    if now - datetime.fromisoformat(user_record["last_reset"]) > timedelta(days=14):
-        user_record = {"reports": 0, "last_reset": now.isoformat()}
-
-    if not is_pro and user_record["reports"] >= 3:
-        return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
-
     try:
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         rows = list(csv.reader(stream))
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        main_prompt = f"""You're an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"""
+        main_prompt = f"You are an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"
         chat_completion = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": main_prompt}]
@@ -191,7 +184,7 @@ def analyze():
         result = chat_completion.choices[0].message.content.strip()
 
         roi_forecast, top_campaign = "", ""
-        if is_pro:
+        if current_user.is_pro:
             roi_prompt = f"ROI prediction:\n{sales_data}"
             campaign_prompt = f"Suggest a campaign:\n{sales_data}"
 
@@ -208,21 +201,21 @@ def analyze():
         html = render_template(
             "report.html",
             content=result,
-            is_pro=is_pro,
+            is_pro=current_user.is_pro,
             roi_forecast=roi_forecast,
             top_campaign=top_campaign
         )
 
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
-        filename = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
+        filename = f"report_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
         pdf_path = os.path.join(reports_dir, filename)
 
         try:
             pdfkit.from_string(html, pdf_path)
             file_to_send = os.path.abspath(pdf_path)
         except Exception:
-            app.logger.exception("pdfkit failed; falling back to HTML report")
+            app.logger.exception("pdfkit failed; falling back to HTML")
             html_fallback = os.path.join(reports_dir, filename.replace(".pdf", ".html"))
             with open(html_fallback, "w", encoding="utf-8") as f:
                 f.write(html)
@@ -231,16 +224,13 @@ def analyze():
         new_report = Report(
             user_id=current_user.id,
             filename=os.path.basename(file_to_send),
-            created_at=now
+            created_at=datetime.utcnow()
         )
         db.session.add(new_report)
-        db.session.commit()
 
-        if not is_pro:
-            user_record["reports"] += 1
-            usage_data[user_email] = user_record
-            with open(usage_path, "w") as f:
-                json.dump(usage_data, f, indent=2)
+        if not current_user.is_pro:
+            current_user.free_reports_used += 1
+        db.session.commit()
 
         return send_file(file_to_send, as_attachment=True)
 
@@ -248,11 +238,13 @@ def analyze():
         app.logger.exception("Analyze failed")
         return f"Error: {e}", 500
 
+
 @app.route('/report-history')
 @login_required
 def report_history():
     reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
+
 
 @app.route("/download-report/<path:filename>")
 @login_required
@@ -268,26 +260,14 @@ def download_report(filename):
 
     return send_from_directory(reports_dir, filename, as_attachment=True)
 
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    user_email = current_user.email
-    is_pro = user_email.endswith("@pro.com")
+    check_and_reset_limits(current_user)
+    remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - current_user.free_reports_used)
+    return render_template("dashboard.html", is_pro=current_user.is_pro, remaining_reports=remaining_reports)
 
-    usage_path = "usage.json"
-    if os.path.exists(usage_path):
-        with open(usage_path, "r") as f:
-            usage_data = json.load(f)
-    else:
-        usage_data = {}
-
-    now = datetime.now()
-    user_record = usage_data.get(user_email, {"reports": 0, "last_reset": now.isoformat()})
-    if now - datetime.fromisoformat(user_record["last_reset"]) > timedelta(days=14):
-        user_record = {"reports": 0, "last_reset": now.isoformat()}
-
-    remaining_reports = "Unlimited" if is_pro else max(0, 3 - user_record["reports"])
-    return render_template("dashboard.html", is_pro=is_pro, remaining_reports=remaining_reports)
 
 @app.route("/healthz")
 def healthz():
@@ -297,15 +277,6 @@ def healthz():
     except Exception as e:
         return f"db error: {e}", 500
 
-# --- тимчасовий діагностичний маршрут ---
-@app.route("/mail-status")
-def mail_status():
-    return {
-        "MAIL_USERNAME_present": bool(app.config.get("MAIL_USERNAME")),
-        "MAIL_PASSWORD_present": bool(app.config.get("MAIL_PASSWORD")),
-        "MAIL_DEFAULT_SENDER_present": bool(app.config.get("MAIL_DEFAULT_SENDER")),
-        "MAIL_ENABLED": bool(app.config.get("MAIL_ENABLED")),
-    }, 200
 
 if __name__ == "__main__":
     app.run(debug=True)
