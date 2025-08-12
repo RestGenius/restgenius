@@ -101,6 +101,34 @@
             border-radius: 6px;
             color: white;
         }
+
+        /* Стиль для форми завантаження */
+        form.upload-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        form.upload-form input[type="file"] {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: var(--card);
+            color: var(--text);
+        }
+
+        form.upload-form button {
+            background-color: var(--accent);
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        form.upload-form button:hover {
+            background-color: #1558b0;
+        }
     </style>
 </head>
 <body>
@@ -128,6 +156,15 @@
 
         <div class="card">
             <a class="btn" href="{{ url_for('report_history') }}">📁 My Reports</a>
+        </div>
+
+        <!-- НОВА КАРТКА для завантаження CSV -->
+        <div class="card">
+            <h3>📂 Upload Sales CSV for Analysis</h3>
+            <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" class="upload-form">
+                <input type="file" name="file" accept=".csv" required>
+                <button type="submit">📊 Analyze Data</button>
+            </form>
         </div>
     </div>
 
