@@ -10,6 +10,10 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(200), nullable=False)
     is_verified = db.Column(db.Boolean, default=False)
 
+    # Ліміти для Free-версії
+    free_reports_used = db.Column(db.Integer, default=0)  # Кількість використаних звітів
+    free_reports_reset = db.Column(db.DateTime, default=datetime.utcnow)  # Дата останнього скидання
+
     # 🔗 Зв'язок із Report
     reports = db.relationship('Report', backref='user', lazy=True)
 
