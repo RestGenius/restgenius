@@ -5,7 +5,7 @@
   <title>RestGenius — Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { --ink:#0f172a; --muted:#475569; --accent:#1a73e8; --border:#e5e7eb; --bg:#f8fafc; --ok:#16a34a; }
+    :root { --ink:#0f172a; --muted:#475569; --accent:#1a73e8; --border:#e5e7eb; --bg:#f8fafc; --ok:#16a34a; --err:#b91c1c; --errbg:#fef2f2; --errb:#fecaca; }
     * { box-sizing: border-box; }
     html,body { margin:0; padding:0; font-family: -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; color:var(--ink); background:#fff; }
     header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:#fff; position:sticky; top:0; z-index:10; }
@@ -36,15 +36,12 @@
     .preview { height:520px; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
     .preview iframe { width:100%; height:100%; border:0; }
 
-    /* Toast */
-    .toast {
-      position: fixed; right: 20px; bottom: 20px;
-      background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-      padding:12px 14px; border-radius:10px; font-size:14px;
-      display:none; z-index:9999;
-    }
+    /* Toasts */
+    .toast { position: fixed; right: 20px; bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      padding:12px 14px; border-radius:10px; font-size:14px; display:none; z-index:9999; }
     .toast.show { display:block; animation: slideUp .25s ease-out; }
+    .toast.ok { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .toast.err { background:var(--errbg); color:var(--err); border:1px solid var(--errb); }
     @keyframes slideUp { from { transform: translateY(10px); opacity:0; } to { transform: translateY(0); opacity:1; } }
   </style>
 </head>
@@ -53,6 +50,7 @@
     <div class="brand">RestGenius</div>
     <nav class="nav">
       <a class="btn" href="{{ url_for('report_history') }}">📚 My Reports</a>
+      <a class="btn" href="{{ url_for('sample_csv') }}">⬇️ Download sample CSV</a>
       <a class="btn danger" href="{{ url_for('logout') }}">Logout</a>
     </nav>
   </header>
@@ -76,7 +74,7 @@
               Generate Report
             </button>
           </form>
-          <div class="help">Accepted: .csv only. Up to ~5,000 rows per upload.</div>
+          <div class="help">Accepted: .csv only. Up to ~5,000 rows per upload. Max size: {{ max_upload_mb }} MB.</div>
 
           {% if limit_reached %}
             <div class="upsell" style="margin-top:10px;">
@@ -140,28 +138,52 @@
     </div>
   </main>
 
-  <!-- Toast -->
-  <div id="rg-toast" class="toast">✅ Report generated and downloaded.</div>
+  <!-- Toasts -->
+  <div id="rg-toast-ok" class="toast ok">✅ Report generated and downloaded.</div>
+  <div id="rg-toast-err" class="toast err">❌ There was a problem generating your report. Please try again.</div>
+  <div id="rg-toast-err-size" class="toast err">❌ File is too large. Max size: {{ max_upload_mb }} MB.</div>
+  <div id="rg-toast-err-auth" class="toast err">❌ OpenAI authentication error. Please check the API key.</div>
+  <div id="rg-toast-err-rate" class="toast err">⏳ Rate limit reached. Please retry in a moment.</div>
+  <div id="rg-toast-err-timeout" class="toast err">⌛ OpenAI timed out. Please retry.</div>
+  <div id="rg-toast-err-nofile" class="toast err">❌ No file selected or wrong type. Please upload a .csv file.</div>
 
   <script>
-    // показуємо toast, якщо бекенд поставив кукі rg_generated=1
     (function() {
       function getCookie(name) {
         const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
         return m ? decodeURIComponent(m[2]) : null;
       }
-      function deleteCookie(name) {
+      function clearCookie(name) {
         document.cookie = name + '=; Max-Age=0; path=/; samesite=Lax';
       }
-      const flag = getCookie('rg_generated');
-      if (flag === '1') {
-        const t = document.getElementById('rg-toast');
-        if (t) {
-          t.classList.add('show');
-          setTimeout(() => { t.classList.remove('show'); }, 3000);
+      function show(id) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.classList.add('show');
+          setTimeout(() => el.classList.remove('show'), 3500);
         }
-        deleteCookie('rg_generated');
       }
+
+      // success
+      if (getCookie('rg_generated') === '1') { show('rg-toast-ok'); clearCookie('rg_generated'); }
+
+      // errors
+      const errs = [
+        ['rg_error','rg-toast-err'],
+        ['rg_err_size','rg-toast-err-size'],
+        ['rg_err_auth','rg-toast-err-auth'],
+        ['rg_err_rate','rg-toast-err-rate'],
+        ['rg_err_timeout','rg-toast-err-timeout'],
+        ['rg_err_no_file','rg-toast-err-nofile'],
+        ['rg_err_type','rg-toast-err-nofile'],
+        ['rg_err_empty','rg-toast-err'],
+      ];
+      errs.forEach(([cookie, toastId]) => {
+        if (getCookie(cookie) === '1') {
+          show(toastId);
+          clearCookie(cookie);
+        }
+      });
     })();
   </script>
 </body>
