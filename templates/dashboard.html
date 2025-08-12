@@ -25,7 +25,7 @@
     .card h2 { margin:0 0 10px; font-size:20px; color:var(--accent); }
     .muted { color:var(--muted); font-size:14px; }
 
-    .uploader { border:2px dashed var(--border); border-radius:12px; padding:18px; background:var(--bg); }
+    .uploader { border:2px dashed var(--border); border-radius:12px; padding:18px; background:#f8fafc; }
     input[type=file] { display:block; margin:10px 0 14px; }
     .help { font-size:13px; color:var(--muted); }
 
@@ -117,6 +117,9 @@
         {% if not is_verified %}
           <div class="upsell" style="margin-top:10px;">
             Please verify your email to enable report generation.
+            <form action="{{ url_for('resend_confirmation') }}" method="post" style="margin-top:10px;">
+              <button class="btn primary" type="submit">Resend verification email</button>
+            </form>
           </div>
         {% endif %}
 
@@ -160,6 +163,12 @@
   <div id="rg-toast-err-nofile" class="toast err">❌ No file selected or wrong type. Please upload a .csv file.</div>
   <div id="rg-toast-err-limit" class="toast err">❌ Free plan limit reached (3 reports / 14 days). Upgrade to PRO.</div>
 
+  <!-- New toasts for email confirmation flow -->
+  <div id="rg-toast-confirm-sent" class="toast ok">📧 Confirmation email sent. Please check your inbox.</div>
+  <div id="rg-toast-confirm-err" class="toast err">❌ Couldn't send confirmation email. Try again later.</div>
+  <div id="rg-toast-auto-verified" class="toast ok">✅ Email auto-verified (dev mode).</div>
+  <div id="rg-toast-confirm-already" class="toast ok">ℹ️ Email already verified.</div>
+
   <script>
     (function() {
       function getCookie(name){const m=document.cookie.match(new RegExp('(^| )'+name+'=([^;]+)'));return m?decodeURIComponent(m[2]):null;}
@@ -169,6 +178,9 @@
       // success
       if (getCookie('rg_generated')==='1'){ show('rg-toast-ok'); clearCookie('rg_generated'); }
       if (getCookie('rg_upgraded')==='1'){ show('rg-toast-upgraded'); clearCookie('rg_upgraded'); }
+      if (getCookie('rg_confirm_sent')==='1'){ show('rg-toast-confirm-sent'); clearCookie('rg_confirm_sent'); }
+      if (getCookie('rg_auto_verified')==='1'){ show('rg-toast-auto-verified'); clearCookie('rg_auto_verified'); }
+      if (getCookie('rg_confirm_already')==='1'){ show('rg-toast-confirm-already'); clearCookie('rg_confirm_already'); }
 
       // errors
       const errs=[
@@ -180,7 +192,8 @@
         ['rg_err_no_file','rg-toast-err-nofile'],
         ['rg_err_type','rg-toast-err-nofile'],
         ['rg_err_empty','rg-toast-err'],
-        ['rg_err_limit','rg-toast-err-limit'] // new
+        ['rg_err_limit','rg-toast-err-limit'],
+        ['rg_confirm_err','rg-toast-confirm-err']
       ];
       errs.forEach(([c,id])=>{ if(getCookie(c)==='1'){ show(id); clearCookie(c);} });
     })();
