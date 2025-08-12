@@ -10,7 +10,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import safe_join
 from werkzeug.exceptions import RequestEntityTooLarge
 from flask_mail import Mail, Message
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from openai import OpenAI
 from sqlalchemy import text
 import pdfkit
@@ -116,6 +116,7 @@ def register():
             s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
             token = s.dumps(email, salt="email-confirm")
             link = url_for('confirm_email', token=token, _external=True)
+            ttl_hours = int(int(os.getenv("CONFIRM_MAX_AGE_SECONDS", "172800")) / 3600)
 
             msg = Message(
                 "Confirm your email",
@@ -126,6 +127,7 @@ def register():
             <h3>Welcome to RestGenius!</h3>
             <p>Click the button below to verify your email:</p>
             <a href="{link}" style="padding: 10px 20px; background: #1a73e8; color: white; text-decoration: none; border-radius: 6px;">✅ Confirm Email</a>
+            <p style="color:#475569; font-size:13px; margin-top:8px;">Link is valid for up to {ttl_hours} hours.</p>
             """
             try:
                 mail.send(msg)
@@ -145,17 +147,23 @@ def register():
 
 @app.route("/confirm/<token>")
 def confirm_email(token):
+    s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    max_age = int(os.getenv("CONFIRM_MAX_AGE_SECONDS", "172800"))  # 48 год за замовчуванням
     try:
-        s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-        email = s.loads(token, salt="email-confirm", max_age=3600)
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            return "User not found."
-        user.is_verified = True
-        db.session.commit()
-        return "✅ Email confirmed! You can now log in."
-    except Exception as e:
-        return f"❌ Invalid or expired link: {e}"
+        email = s.loads(token, salt="email-confirm", max_age=max_age)
+    except SignatureExpired:
+        return "❌ Link expired. Please go back to your dashboard and resend the confirmation email.", 400
+    except BadSignature:
+        return "❌ Invalid confirmation link.", 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return "User not found.", 404
+    if user.is_verified:
+        return "✅ Email already confirmed. You can log in."
+    user.is_verified = True
+    db.session.commit()
+    return "✅ Email confirmed! You can now log in."
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -218,6 +226,46 @@ def upgrade_dev():
     resp = redirect(url_for("dashboard"))
     resp.set_cookie("rg_upgraded", "1", max_age=300, samesite="Lax")
     return resp
+
+# === RESEND CONFIRMATION ===
+@app.route("/resend-confirmation", methods=["POST"])
+@login_required
+def resend_confirmation():
+    # Уже підтверджений?
+    if current_user.is_verified:
+        return _toast_redirect("rg_confirm_already")
+
+    # Пошта не налаштована
+    if not MAIL_ENABLED:
+        if AUTO_VERIFY_IF_NO_MAIL:
+            current_user.is_verified = True
+            db.session.commit()
+            app.logger.warning("[MAIL] disabled; auto-verified user_id=%s", current_user.id)
+            return _toast_redirect("rg_auto_verified")
+        return _toast_redirect("rg_confirm_err")
+
+    try:
+        s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+        token = s.dumps(current_user.email, salt="email-confirm")
+        link = url_for('confirm_email', token=token, _external=True)
+        ttl_hours = int(int(os.getenv("CONFIRM_MAX_AGE_SECONDS", "172800")) / 3600)
+
+        msg = Message(
+            "Confirm your email",
+            sender=app.config["MAIL_DEFAULT_SENDER"],
+            recipients=[current_user.email],
+        )
+        msg.html = f"""
+        <h3>Confirm your email</h3>
+        <p>Click the button below to verify your email:</p>
+        <a href="{link}" style="padding:10px 20px; background:#1a73e8; color:#fff; text-decoration:none; border-radius:6px;">✅ Confirm Email</a>
+        <p style="color:#475569; font-size:13px; margin-top:8px;">Link is valid for up to {ttl_hours} hours.</p>
+        """
+        mail.send(msg)
+        return _toast_redirect("rg_confirm_sent")
+    except Exception as e:
+        app.logger.exception("[MAIL] resend failed user_id=%s err=%s", current_user.id, e)
+        return _toast_redirect("rg_confirm_err")
 
 @app.route("/analyze", methods=["POST"])
 @login_required
@@ -326,6 +374,10 @@ def analyze():
             "margin-bottom": "12mm",
             "margin-left": "10mm",
             "quiet": None,
+            # опційно: нумерація сторінок (wkhtmltopdf)
+            "footer-right": "[page]/[toPage]",
+            "footer-font-size": "9",
+            "footer-spacing": "4",
         }
 
         try:
