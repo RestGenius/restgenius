@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, send_file, url_for, flash, redirect, send_from_directory, abort
+from flask import Flask, request, render_template, send_file, url_for, redirect, send_from_directory, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,7 +12,7 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta
-from models import db, User, Report  # одразу імпортуємо Report
+from models import db, User, Report
 
 app = Flask(__name__)
 
@@ -22,14 +22,13 @@ app.config.update(
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USERNAME=os.environ.get("EMAIL_USER"),
-    MAIL_PASSWORD=os.environ.get("EMAIL_PASS") or os.environ.get("EMAIL_PASSWORD"),  # підтримка двох назв ключа
+    MAIL_PASSWORD=(os.environ.get("EMAIL_PASS") or os.environ.get("EMAIL_PASSWORD")),
     MAIL_DEFAULT_SENDER=(os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("EMAIL_USER")),
     SECRET_KEY=os.environ.get("SECRET_KEY", "mysecret"),
     SQLALCHEMY_DATABASE_URI="sqlite:///users.db",
 )
 
 # === MAIL DIAGNOSTICS ===
-import logging
 app.logger.warning(
     "[MAIL DIAG] USER:%s PASS:%s SENDER:%s",
     bool(app.config.get("MAIL_USERNAME")),
@@ -64,9 +63,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- Далі йде весь твій існуючий код без змін ---
-
-# === ROUTES ===
+# --- ROUTES ---
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -86,7 +83,6 @@ def register():
         db.session.commit()
 
         if app.config["MAIL_ENABLED"]:
-            # Email confirmation
             s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
             token = s.dumps(email, salt="email-confirm")
             link = url_for('confirm_email', token=token, _external=True)
@@ -109,7 +105,6 @@ def register():
                 app.logger.exception("Mail send failed")
                 return "We couldn't send the confirmation email right now. Please try again later.", 200
         else:
-            # DEV-потік: пошта не налаштована — авто-верифікація (можна вимкнути через ENV)
             if AUTO_VERIFY_IF_NO_MAIL:
                 new_user.is_verified = True
                 db.session.commit()
@@ -168,7 +163,6 @@ def analyze():
     user_email = current_user.email
     is_pro = user_email.endswith("@pro.com")
 
-    # === Зчитування usage.json ===
     usage_path = "usage.json"
     if os.path.exists(usage_path):
         with open(usage_path, "r") as f:
@@ -185,12 +179,10 @@ def analyze():
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
     try:
-        # === Обробка CSV ===
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         rows = list(csv.reader(stream))
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # === GPT: Основний запит ===
         main_prompt = f"""You're an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"""
         chat_completion = openai.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -213,7 +205,6 @@ def analyze():
                 messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
-        # === Рендер HTML ===
         html = render_template(
             "report.html",
             content=result,
@@ -222,7 +213,6 @@ def analyze():
             top_campaign=top_campaign
         )
 
-        # === Створення PDF ===
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
         filename = f"report_{now.strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
@@ -230,39 +220,33 @@ def analyze():
 
         try:
             pdfkit.from_string(html, pdf_path)
-            # === Відправка файлу користувачу ===
             file_to_send = os.path.abspath(pdf_path)
-        except Exception as e:
-            # Якщо немає wkhtmltopdf — збережемо HTML як fallback
+        except Exception:
             app.logger.exception("pdfkit failed; falling back to HTML report")
             html_fallback = os.path.join(reports_dir, filename.replace(".pdf", ".html"))
             with open(html_fallback, "w", encoding="utf-8") as f:
                 f.write(html)
             file_to_send = os.path.abspath(html_fallback)
 
-        # === Збереження звіту в базу ===
         new_report = Report(
             user_id=current_user.id,
-            filename=os.path.basename(file_to_send),  # зберігаємо назву
+            filename=os.path.basename(file_to_send),
             created_at=now
         )
         db.session.add(new_report)
         db.session.commit()
 
-        # === Оновлення usage.json ===
         if not is_pro:
             user_record["reports"] += 1
             usage_data[user_email] = user_record
             with open(usage_path, "w") as f:
                 json.dump(usage_data, f, indent=2)
 
-        # === Відправка файлу користувачу ===
         return send_file(file_to_send, as_attachment=True)
 
     except Exception as e:
         app.logger.exception("Analyze failed")
         return f"Error: {e}", 500
-
 
 @app.route('/report-history')
 @login_required
@@ -270,22 +254,18 @@ def report_history():
     reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
 
-# === SECURE DOWNLOAD ROUTE ===
 @app.route("/download-report/<path:filename>")
 @login_required
 def download_report(filename):
-    # 1) Перевіряємо, що звіт належить користувачу
     report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
     if not report:
         abort(404)
 
-    # 2) Безпечний шлях до файлу (захист від traversal)
     reports_dir = os.path.abspath("reports")
     safe_path = safe_join(reports_dir, filename)
     if not safe_path or not os.path.isfile(safe_path):
         abort(404)
 
-    # 3) Віддаємо файл як завантаження
     return send_from_directory(reports_dir, filename, as_attachment=True)
 
 @app.route("/dashboard")
@@ -294,7 +274,6 @@ def dashboard():
     user_email = current_user.email
     is_pro = user_email.endswith("@pro.com")
 
-    # --- Зчитуємо usage.json ---
     usage_path = "usage.json"
     if os.path.exists(usage_path):
         with open(usage_path, "r") as f:
@@ -310,7 +289,6 @@ def dashboard():
     remaining_reports = "Unlimited" if is_pro else max(0, 3 - user_record["reports"])
     return render_template("dashboard.html", is_pro=is_pro, remaining_reports=remaining_reports)
 
-# healthcheck
 @app.route("/healthz")
 def healthz():
     try:
@@ -319,6 +297,15 @@ def healthz():
     except Exception as e:
         return f"db error: {e}", 500
 
+# --- тимчасовий діагностичний маршрут ---
+@app.route("/mail-status")
+def mail_status():
+    return {
+        "MAIL_USERNAME_present": bool(app.config.get("MAIL_USERNAME")),
+        "MAIL_PASSWORD_present": bool(app.config.get("MAIL_PASSWORD")),
+        "MAIL_DEFAULT_SENDER_present": bool(app.config.get("MAIL_DEFAULT_SENDER")),
+        "MAIL_ENABLED": bool(app.config.get("MAIL_ENABLED")),
+    }, 200
 
 if __name__ == "__main__":
     app.run(debug=True)
