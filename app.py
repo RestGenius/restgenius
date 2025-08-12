@@ -202,39 +202,46 @@ def analyze():
 
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # Основний запит
+        # === Промпти з вимогою HTML-фрагментів ===
         main_prompt = (
             "You are an expert restaurant consultant. "
-            "Analyze the following sales data and provide clear, structured insights, "
-            "quick wins, and concrete next actions:\n\n"
+            "Using the SALES CSV below, return a CLEAN HTML FRAGMENT (no <html> or <body>) "
+            "with these sections using <h2>, <p>, and <ul><li>: "
+            "1) Executive Summary, 2) Key Insights, 3) Quick Wins, 4) Next Actions. "
+            "Keep it concise and scannable. English only.\n\n"
+            "SALES CSV:\n"
             f"{sales_data}"
         )
+
         chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": main_prompt}],
             temperature=0.2,
         )
-        result = chat_completion.choices[0].message.content.strip()
+        result_html = chat_completion.choices[0].message.content.strip()
 
-        roi_forecast, top_campaign = "", ""
+        roi_html, campaign_html = "", ""
         if current_user.is_pro:
             roi_prompt = (
-                "Provide a brief ROI forecast (assumptions + numbers) based on this sales data:\n\n"
+                "Return a CLEAN HTML FRAGMENT with <h2>ROI Forecast</h2> followed by a short "
+                "<p>assumptions</p> and a <ul><li>list of numeric estimates</li></ul> "
+                "based on this SALES CSV. No outer <html>/<body>. English.\n\n"
                 f"{sales_data}"
             )
             campaign_prompt = (
-                "Propose one high-impact marketing campaign tailored to this sales data. "
-                "Include target segment, offer, channel, and 3 KPIs:\n\n"
+                "Return a CLEAN HTML FRAGMENT with <h2>Recommended Campaign</h2> and a brief "
+                "<p>why it fits</p> plus a <ul><li>Target</li><li>Offer</li><li>Channel</li><li>3 KPIs</li></ul>. "
+                "No outer <html>/<body>. English.\n\n"
                 f"{sales_data}"
             )
 
-            roi_forecast = client.chat.completions.create(
+            roi_html = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": roi_prompt}],
                 temperature=0.2,
             ).choices[0].message.content.strip()
 
-            top_campaign = client.chat.completions.create(
+            campaign_html = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": campaign_prompt}],
                 temperature=0.2,
@@ -243,20 +250,30 @@ def analyze():
         # Рендеримо HTML звіту
         html = render_template(
             "report.html",
-            content=result,
+            content=result_html,
             is_pro=current_user.is_pro,
-            roi_forecast=roi_forecast,
-            top_campaign=top_campaign
+            roi_forecast=roi_html,
+            top_campaign=campaign_html
         )
 
-        # Генеруємо PDF (або HTML fallback)
+        # Генеруємо PDF (або HTML fallback) з опціями
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
         filename_base = f"report_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}"
         pdf_path = os.path.join(reports_dir, f"{filename_base}.pdf")
 
+        options = {
+            "encoding": "UTF-8",
+            "page-size": "A4",
+            "margin-top": "10mm",
+            "margin-right": "10mm",
+            "margin-bottom": "12mm",
+            "margin-left": "10mm",
+            "quiet": None,
+        }
+
         try:
-            pdfkit.from_string(html, pdf_path)
+            pdfkit.from_string(html, pdf_path, options=options)
             file_to_send = os.path.abspath(pdf_path)
             stored_name = f"{filename_base}.pdf"
         except Exception:
@@ -334,7 +351,6 @@ def healthz_openai():
     Видали в проді, якщо не потрібен.
     """
     try:
-        # дуже короткий виклик
         resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "ping"}],
