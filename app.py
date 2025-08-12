@@ -56,9 +56,11 @@ login_manager.init_app(app)
 with app.app_context():
     db.create_all()
 
-# === OpenAI v1 клієнт ===
-# ВАЖЛИВО: з версією openai==1.35.10 + httpx==0.27.2 помилка "proxies" зникає.
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# === OpenAI v1 client (safe logging) ===
+raw_key = os.getenv("OPENAI_API_KEY", "")
+masked = (raw_key[:7] + "..." + raw_key[-4:]) if raw_key and len(raw_key) > 11 else ("MISSING" if not raw_key else raw_key[:7] + "...")
+app.logger.info(f"[OpenAI] API key loaded? {'YES' if raw_key else 'NO'} ({masked})")
+client = OpenAI(api_key=raw_key)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -74,6 +76,9 @@ def check_and_reset_limits(user: User):
         user.free_reports_used = 0
         user.free_reports_reset = now
         db.session.commit()
+
+def _allowed_csv(filename: str) -> bool:
+    return filename.lower().endswith(".csv")
 
 # === ROUTES ===
 @app.route("/")
@@ -162,9 +167,6 @@ def logout():
     logout_user()
     return "Logged out successfully"
 
-def _allowed_csv(filename: str) -> bool:
-    return filename.lower().endswith(".csv")
-
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
@@ -176,7 +178,7 @@ def analyze():
     check_and_reset_limits(current_user)
 
     # Ліміт для FREE (3 звіти / 14 днів)
-    if not current_user.is_pro and current_user.free_reports_used >= 3:
+    if not current_user.is_pro and (current_user.free_reports_used or 0) >= 3:
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
     if 'file' not in request.files:
@@ -282,9 +284,10 @@ def analyze():
         # Віддаємо файл
         return send_file(file_to_send, as_attachment=True)
 
-    except Exception as e:
+    except Exception:
         app.logger.exception("Analyze failed")
-        return f"Error: {e}", 500
+        # не віддаємо користувачу внутрішній стек/ключі
+        return "Internal error while generating the report. Please try again.", 500
 
 @app.route('/report-history')
 @login_required
@@ -323,6 +326,25 @@ def healthz():
         return "ok", 200
     except Exception as e:
         return f"db error: {e}", 500
+
+@app.route("/healthz/openai")
+def healthz_openai():
+    """
+    Діагностичний пінг до OpenAI. Може згенерувати мінімальні витрати.
+    Видали в проді, якщо не потрібен.
+    """
+    try:
+        # дуже короткий виклик
+        resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+            temperature=0
+        )
+        return "ok", 200
+    except Exception as e:
+        app.logger.exception("OpenAI health failed")
+        return f"openai error: {e}", 500
 
 if __name__ == "__main__":
     # debug=True не бажано в проді, але лишаємо для локального запуску
