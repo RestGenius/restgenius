@@ -1,11 +1,11 @@
 from flask import Flask, request, render_template, send_file, url_for, redirect, send_from_directory, abort
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import safe_join
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
-import openai
+from openai import OpenAI
+from sqlalchemy import text
 import pdfkit
 import os
 import csv
@@ -46,28 +46,25 @@ login_manager.init_app(app)
 with app.app_context():
     db.create_all()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
+# OpenAI v1 клієнт
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
 # === Helper: Check and Reset Limits ===
-def check_and_reset_limits(user):
+def check_and_reset_limits(user: User):
     now = datetime.utcnow()
     if not user.free_reports_reset or (now - user.free_reports_reset) > timedelta(days=14):
         user.free_reports_used = 0
         user.free_reports_reset = now
         db.session.commit()
 
-
 # === ROUTES ===
 @app.route("/")
 def index():
     return render_template("index.html")
-
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -114,7 +111,6 @@ def register():
 
     return render_template("register.html")
 
-
 @app.route("/confirm/<token>")
 def confirm_email(token):
     try:
@@ -128,7 +124,6 @@ def confirm_email(token):
         return "✅ Email confirmed! You can now log in."
     except Exception as e:
         return f"❌ Invalid or expired link: {e}"
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -144,13 +139,11 @@ def login():
         return redirect(url_for("dashboard"))
     return render_template("login.html")
 
-
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return "Logged out successfully"
-
 
 @app.route("/analyze", methods=["POST"])
 @login_required
@@ -161,7 +154,7 @@ def analyze():
     # Reset limits if needed
     check_and_reset_limits(current_user)
 
-    # Limit check
+    # Limit check (FREE: 3 / 14 днів)
     if not current_user.is_pro and current_user.free_reports_used >= 3:
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
@@ -172,12 +165,14 @@ def analyze():
         return "File must be a CSV", 400
 
     try:
+        # прочитали CSV
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
         rows = list(csv.reader(stream))
         sales_data = "\n".join([", ".join(row) for row in rows])
 
+        # основний запит
         main_prompt = f"You are an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"
-        chat_completion = openai.chat.completions.create(
+        chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": main_prompt}]
         )
@@ -188,16 +183,17 @@ def analyze():
             roi_prompt = f"ROI prediction:\n{sales_data}"
             campaign_prompt = f"Suggest a campaign:\n{sales_data}"
 
-            roi_forecast = openai.chat.completions.create(
+            roi_forecast = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": roi_prompt}]
             ).choices[0].message.content.strip()
 
-            top_campaign = openai.chat.completions.create(
+            top_campaign = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": campaign_prompt}]
             ).choices[0].message.content.strip()
 
+        # рендеримо HTML звіту
         html = render_template(
             "report.html",
             content=result,
@@ -206,6 +202,7 @@ def analyze():
             top_campaign=top_campaign
         )
 
+        # генеруємо PDF (або HTML fallback)
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
         filename = f"report_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
@@ -221,6 +218,7 @@ def analyze():
                 f.write(html)
             file_to_send = os.path.abspath(html_fallback)
 
+        # зберігаємо запис про звіт
         new_report = Report(
             user_id=current_user.id,
             filename=os.path.basename(file_to_send),
@@ -228,16 +226,17 @@ def analyze():
         )
         db.session.add(new_report)
 
+        # інкремент ліміту для FREE
         if not current_user.is_pro:
             current_user.free_reports_used += 1
         db.session.commit()
 
+        # віддаємо файл
         return send_file(file_to_send, as_attachment=True)
 
     except Exception as e:
         app.logger.exception("Analyze failed")
         return f"Error: {e}", 500
-
 
 @app.route('/report-history')
 @login_required
@@ -245,21 +244,21 @@ def report_history():
     reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
 
-
 @app.route("/download-report/<path:filename>")
 @login_required
 def download_report(filename):
+    # належність файлу користувачу
     report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
     if not report:
         abort(404)
 
+    # перевірка шляху
     reports_dir = os.path.abspath("reports")
     safe_path = safe_join(reports_dir, filename)
     if not safe_path or not os.path.isfile(safe_path):
         abort(404)
 
     return send_from_directory(reports_dir, filename, as_attachment=True)
-
 
 @app.route("/dashboard")
 @login_required
@@ -268,15 +267,13 @@ def dashboard():
     remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - current_user.free_reports_used)
     return render_template("dashboard.html", is_pro=current_user.is_pro, remaining_reports=remaining_reports)
 
-
 @app.route("/healthz")
 def healthz():
     try:
-        db.session.execute("SELECT 1")
+        db.session.execute(text("SELECT 1"))
         return "ok", 200
     except Exception as e:
         return f"db error: {e}", 500
-
 
 if __name__ == "__main__":
     app.run(debug=True)
