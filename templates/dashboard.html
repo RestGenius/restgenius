@@ -66,10 +66,11 @@
           <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
             <input type="file" name="file" accept=".csv" required />
             {% set limit_reached = (not is_pro) and (remaining_reports == 0) %}
+            {% set disable_generate = limit_reached or (not is_verified) %}
             <button
               type="submit"
-              class="btn primary {% if limit_reached %}disabled{% endif %}"
-              {% if limit_reached %}disabled{% endif %}
+              class="btn primary {% if disable_generate %}disabled{% endif %}"
+              {% if disable_generate %}disabled{% endif %}
             >
               Generate Report
             </button>
@@ -113,6 +114,12 @@
           {% endif %}
         </p>
 
+        {% if not is_verified %}
+          <div class="upsell" style="margin-top:10px;">
+            Please verify your email to enable report generation.
+          </div>
+        {% endif %}
+
         <div class="quota">
           <div>
             <div><strong>Reports left</strong></div>
@@ -120,7 +127,7 @@
               {% if is_pro %}
                 Unlimited
               {% else %}
-                {{ remaining_reports }} of 3 (resets every 14 days)
+                {{ remaining_reports }} of 3{% if reset_days is not none %} · resets in {{ reset_days }}d {{ reset_hours }}h{% endif %}
               {% endif %}
             </div>
           </div>
@@ -151,6 +158,7 @@
   <div id="rg-toast-err-rate" class="toast err">⏳ Rate limit reached. Please retry in a moment.</div>
   <div id="rg-toast-err-timeout" class="toast err">⌛ OpenAI timed out. Please retry.</div>
   <div id="rg-toast-err-nofile" class="toast err">❌ No file selected or wrong type. Please upload a .csv file.</div>
+  <div id="rg-toast-err-limit" class="toast err">❌ Free plan limit reached (3 reports / 14 days). Upgrade to PRO.</div>
 
   <script>
     (function() {
@@ -163,7 +171,17 @@
       if (getCookie('rg_upgraded')==='1'){ show('rg-toast-upgraded'); clearCookie('rg_upgraded'); }
 
       // errors
-      const errs=[['rg_error','rg-toast-err'],['rg_err_size','rg-toast-err-size'],['rg_err_auth','rg-toast-err-auth'],['rg_err_rate','rg-toast-err-rate'],['rg_err_timeout','rg-toast-err-timeout'],['rg_err_no_file','rg-toast-err-nofile'],['rg_err_type','rg-toast-err-nofile'],['rg_err_empty','rg-toast-err']];
+      const errs=[
+        ['rg_error','rg-toast-err'],
+        ['rg_err_size','rg-toast-err-size'],
+        ['rg_err_auth','rg-toast-err-auth'],
+        ['rg_err_rate','rg-toast-err-rate'],
+        ['rg_err_timeout','rg-toast-err-timeout'],
+        ['rg_err_no_file','rg-toast-err-nofile'],
+        ['rg_err_type','rg-toast-err-nofile'],
+        ['rg_err_empty','rg-toast-err'],
+        ['rg_err_limit','rg-toast-err-limit'] // new
+      ];
       errs.forEach(([c,id])=>{ if(getCookie(c)==='1'){ show(id); clearCookie(c);} });
     })();
   </script>
