@@ -55,6 +55,7 @@
             <td class="small">{{ r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "-" }}</td>
             <td>
               <a class="btn" href="{{ url_for('download_report', filename=r.filename) }}">Download</a>
+              <a class="btn" href="{{ url_for('preview_report', filename=r.filename) }}" target="_blank">Preview</a>
             </td>
           </tr>
         {% endfor %}
