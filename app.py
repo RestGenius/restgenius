@@ -229,9 +229,9 @@ def analyze():
     # Скидання/перевірка лімітів
     check_and_reset_limits(current_user)
 
-    # Ліміт для FREE (3 звіти / 14 днів)
+    # Ліміт для FREE (3 звіти / 14 днів) — тепер редірект з toast, а не 403-сторінка
     if not current_user.is_pro and (current_user.free_reports_used or 0) >= 3:
-        return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
+        return _toast_redirect("rg_err_limit")
 
     if 'file' not in request.files:
         return _toast_redirect("rg_err_no_file")
@@ -430,15 +430,31 @@ def preview_report(filename):
 @login_required
 def dashboard():
     check_and_reset_limits(current_user)
-    remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - (current_user.free_reports_used or 0))
+    is_pro = bool(current_user.is_pro)
+    remaining_reports = "Unlimited" if is_pro else max(0, 3 - (current_user.free_reports_used or 0))
+
+    # countdown до наступного ресету
+    reset_days = reset_hours = next_reset_iso = None
+    if not is_pro:
+        anchor = current_user.free_reports_reset or datetime.utcnow()
+        next_reset = anchor + timedelta(days=14)
+        delta = max(timedelta(0), next_reset - datetime.utcnow())
+        reset_days = delta.days
+        reset_hours = (delta.seconds // 3600)
+        next_reset_iso = next_reset.isoformat()
+
     last_report = Report.query.filter_by(user_id=current_user.id)\
         .order_by(Report.created_at.desc()).first()
     dev_token = os.getenv("DEV_UPGRADE_TOKEN", "")
 
     return render_template(
         "dashboard.html",
-        is_pro=current_user.is_pro,
+        is_pro=is_pro,
+        is_verified=bool(current_user.is_verified),
         remaining_reports=remaining_reports,
+        reset_days=reset_days,
+        reset_hours=reset_hours,
+        next_reset_iso=next_reset_iso,
         last_report=last_report,
         max_upload_mb=MAX_UPLOAD_MB,
         dev_token=dev_token
