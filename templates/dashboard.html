@@ -1,179 +1,168 @@
-<!-- templates/dashboard.html -->
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard – RestGenius</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-        :root {
-            --bg-dark: #121212;
-            --bg-light: #f6f9fc;
-            --card-dark: #1e1e1e;
-            --card-light: #ffffff;
-            --text-dark: #ffffff;
-            --text-light: #000000;
-            --accent: #1a73e8;
-        }
+  <meta charset="utf-8" />
+  <title>RestGenius — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --ink:#0f172a; --muted:#475569; --accent:#1a73e8; --border:#e5e7eb; --bg:#f8fafc; --ok:#16a34a; }
+    * { box-sizing: border-box; }
+    html,body { margin:0; padding:0; font-family: -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; color:var(--ink); background:#fff; }
+    header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:#fff; position:sticky; top:0; z-index:10; }
+    .brand { font-weight:700; letter-spacing:0.2px; }
+    .nav { display:flex; gap:10px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; text-decoration:none; color:var(--ink); cursor:pointer; }
+    .btn:hover { border-color:#cbd5e1; }
+    .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn.danger { background:#ef4444; color:#fff; border-color:#ef4444; }
+    .btn.disabled, .btn[disabled] { opacity:0.6; cursor:not-allowed; }
 
-        [data-theme="dark"] {
-            --bg: var(--bg-dark);
-            --card: var(--card-dark);
-            --text: var(--text-dark);
-        }
+    main { max-width:1200px; margin:24px auto; padding:0 20px; }
+    .grid { display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
 
-        [data-theme="light"] {
-            --bg: var(--bg-light);
-            --card: var(--card-light);
-            --text: var(--text-light);
-        }
+    .card { border:1px solid var(--border); border-radius:14px; background:#fff; padding:18px; }
+    .card h2 { margin:0 0 10px; font-size:20px; color:var(--accent); }
+    .muted { color:var(--muted); font-size:14px; }
 
-        body {
-            font-family: Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            margin: 0;
-            display: flex;
-        }
+    .uploader { border:2px dashed var(--border); border-radius:12px; padding:18px; background:var(--bg); }
+    input[type=file] { display:block; margin:10px 0 14px; }
+    .help { font-size:13px; color:var(--muted); }
 
-        .sidebar {
-            width: 240px;
-            background: var(--card);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.2);
-        }
+    .quota { display:flex; align-items:center; justify-content:space-between; border:1px dashed var(--border); border-radius:12px; padding:12px; margin-top:10px; }
+    .pill { padding:6px 10px; border-radius:999px; font-size:12px; background:#eef2ff; color:#3730a3; }
+    .upsell { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:12px; border-radius:12px; font-size:14px; margin-top:10px; }
 
-        .sidebar h2 {
-            font-size: 1.2rem;
-            margin-bottom: 30px;
-            color: var(--accent);
-        }
+    .preview { height:520px; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .preview iframe { width:100%; height:100%; border:0; }
 
-        .sidebar a {
-            color: var(--text);
-            text-decoration: none;
-            padding: 10px 0;
-            display: block;
-            border-radius: 6px;
-        }
-
-        .sidebar a:hover {
-            background: rgba(255,255,255,0.1);
-        }
-
-        .content {
-            flex: 1;
-            padding: 30px;
-        }
-
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-
-        .card {
-            background: var(--card);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 10px 18px;
-            background: var(--accent);
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-        }
-
-        .theme-toggle {
-            cursor: pointer;
-            padding: 6px 12px;
-            background: var(--accent);
-            border: none;
-            border-radius: 6px;
-            color: white;
-        }
-
-        /* Стиль для форми завантаження */
-        form.upload-form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        form.upload-form input[type="file"] {
-            padding: 6px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            background: var(--card);
-            color: var(--text);
-        }
-
-        form.upload-form button {
-            background-color: var(--accent);
-            color: white;
-            padding: 10px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        form.upload-form button:hover {
-            background-color: #1558b0;
-        }
-    </style>
+    /* Toast */
+    .toast {
+      position: fixed; right: 20px; bottom: 20px;
+      background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      padding:12px 14px; border-radius:10px; font-size:14px;
+      display:none; z-index:9999;
+    }
+    .toast.show { display:block; animation: slideUp .25s ease-out; }
+    @keyframes slideUp { from { transform: translateY(10px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  </style>
 </head>
 <body>
-    <div class="sidebar">
-        <h2>RestGenius</h2>
-        <a href="{{ url_for('dashboard') }}">🏠 Dashboard</a>
-        <a href="{{ url_for('report_history') }}">📁 My Reports</a>
-        <a href="{{ url_for('logout') }}">🚪 Logout</a>
+  <header>
+    <div class="brand">RestGenius</div>
+    <nav class="nav">
+      <a class="btn" href="{{ url_for('report_history') }}">📚 My Reports</a>
+      <a class="btn danger" href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="grid">
+      <!-- LEFT: Uploader + Preview -->
+      <section class="card">
+        <h2>Upload Sales CSV</h2>
+        <p class="muted">Attach your sales CSV to generate a restaurant growth report.</p>
+
+        <div class="uploader">
+          <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv" required />
+            {% set limit_reached = (not is_pro) and (remaining_reports == 0) %}
+            <button
+              type="submit"
+              class="btn primary {% if limit_reached %}disabled{% endif %}"
+              {% if limit_reached %}disabled{% endif %}
+            >
+              Generate Report
+            </button>
+          </form>
+          <div class="help">Accepted: .csv only. Up to ~5,000 rows per upload.</div>
+
+          {% if limit_reached %}
+            <div class="upsell" style="margin-top:10px;">
+              You’ve reached the Free plan limit (3 reports / 14 days).
+              Upgrade to PRO for unlimited reports and advanced insights.
+            </div>
+          {% endif %}
+        </div>
+
+        {% if last_report %}
+          <div style="margin-top:16px;">
+            <h2 style="margin-top:0;">Latest Report Preview</h2>
+            <div class="muted" style="margin-bottom:8px;">
+              {{ last_report.filename }} — {{ last_report.created_at.strftime("%Y-%m-%d %H:%M:%S") if last_report.created_at else "-" }} UTC
+            </div>
+            <div class="preview">
+              <iframe src="{{ url_for('preview_report', filename=last_report.filename) }}#view=FitH"></iframe>
+            </div>
+            <div style="margin-top:10px; display:flex; gap:10px;">
+              <a class="btn" href="{{ url_for('download_report', filename=last_report.filename) }}">Download</a>
+              <a class="btn" href="{{ url_for('report_history') }}">Open History</a>
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
+      <!-- RIGHT: Plan & Quota -->
+      <aside class="card">
+        <h2>Your Plan</h2>
+        <p>
+          <strong>Status:</strong>
+          {% if is_pro %}
+            <span class="pill">PRO</span>
+          {% else %}
+            <span class="pill">Free</span>
+          {% endif %}
+        </p>
+
+        <div class="quota">
+          <div>
+            <div><strong>Reports left</strong></div>
+            <div class="muted">
+              {% if is_pro %}
+                Unlimited
+              {% else %}
+                {{ remaining_reports }} of 3 (resets every 14 days)
+              {% endif %}
+            </div>
+          </div>
+          <div>
+            <a class="btn" href="{{ url_for('report_history') }}">View History</a>
+          </div>
+        </div>
+
+        {% if not is_pro %}
+          <div style="margin-top:12px;">
+            <a class="btn primary" href="#" onclick="alert('Upgrade flow coming soon'); return false;">Upgrade to PRO</a>
+          </div>
+        {% endif %}
+      </aside>
     </div>
+  </main>
 
-    <div class="content">
-        <div class="top-bar">
-            <div>👤 {{ current_user.email }}</div>
-            <button class="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
-        </div>
+  <!-- Toast -->
+  <div id="rg-toast" class="toast">✅ Report generated and downloaded.</div>
 
-        <div class="card">
-            {% if is_pro %}
-                💼 <strong>PRO Account:</strong> Unlimited reports.
-            {% else %}
-                📊 <strong>Free Plan:</strong> {{ remaining_reports }} reports left this period.<br>
-                (Resets every 14 days)
-            {% endif %}
-        </div>
-
-        <div class="card">
-            <a class="btn" href="{{ url_for('report_history') }}">📁 My Reports</a>
-        </div>
-
-        <!-- НОВА КАРТКА для завантаження CSV -->
-        <div class="card">
-            <h3>📂 Upload Sales CSV for Analysis</h3>
-            <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" class="upload-form">
-                <input type="file" name="file" accept=".csv" required>
-                <button type="submit">📊 Analyze Data</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-theme');
-            html.setAttribute('data-theme', currentTheme === 'dark' ? 'light' : 'dark');
+  <script>
+    // показуємо toast, якщо бекенд поставив кукі rg_generated=1
+    (function() {
+      function getCookie(name) {
+        const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        return m ? decodeURIComponent(m[2]) : null;
+      }
+      function deleteCookie(name) {
+        document.cookie = name + '=; Max-Age=0; path=/; samesite=Lax';
+      }
+      const flag = getCookie('rg_generated');
+      if (flag === '1') {
+        const t = document.getElementById('rg-toast');
+        if (t) {
+          t.classList.add('show');
+          setTimeout(() => { t.classList.remove('show'); }, 3000);
         }
-    </script>
+        deleteCookie('rg_generated');
+      }
+    })();
+  </script>
 </body>
 </html>
