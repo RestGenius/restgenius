@@ -202,6 +202,23 @@ def sample_csv():
     resp.headers["Content-Disposition"] = f'attachment; filename="{fname}"'
     return resp
 
+# === DEV Upgrade to PRO ===
+@app.route("/upgrade/dev")
+@login_required
+def upgrade_dev():
+    token = request.args.get("token", "")
+    expected = os.getenv("DEV_UPGRADE_TOKEN", "")
+    if not expected or token != expected:
+        abort(403)
+
+    current_user.is_pro = True
+    db.session.commit()
+    app.logger.info("[UPGRADE] dev_pro user_id=%s", current_user.id)
+
+    resp = redirect(url_for("dashboard"))
+    resp.set_cookie("rg_upgraded", "1", max_age=300, samesite="Lax")
+    return resp
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
@@ -416,13 +433,15 @@ def dashboard():
     remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - (current_user.free_reports_used or 0))
     last_report = Report.query.filter_by(user_id=current_user.id)\
         .order_by(Report.created_at.desc()).first()
+    dev_token = os.getenv("DEV_UPGRADE_TOKEN", "")
 
     return render_template(
         "dashboard.html",
         is_pro=current_user.is_pro,
         remaining_reports=remaining_reports,
         last_report=last_report,
-        max_upload_mb=MAX_UPLOAD_MB
+        max_upload_mb=MAX_UPLOAD_MB,
+        dev_token=dev_token
     )
 
 @app.route("/healthz")
