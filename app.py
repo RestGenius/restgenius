@@ -1,5 +1,11 @@
-from flask import Flask, request, render_template, send_file, url_for, redirect, send_from_directory, abort
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask import (
+    Flask, request, render_template, send_file, url_for,
+    redirect, send_from_directory, abort
+)
+from flask_login import (
+    LoginManager, login_user, login_required,
+    logout_user, current_user
+)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import safe_join
 from flask_mail import Mail, Message
@@ -11,6 +17,7 @@ import os
 import csv
 import io
 from datetime import datetime, timedelta
+
 from models import db, User, Report
 
 # === APP CONFIG ===
@@ -33,12 +40,15 @@ MAIL_ENABLED = all((
     app.config.get("MAIL_DEFAULT_SENDER"),
 ))
 AUTO_VERIFY_IF_NO_MAIL = os.getenv("AUTO_VERIFY_IF_NO_MAIL", "1") == "1"
-if not MAIL_ENABLED:
-    app.logger.warning("Mail is NOT fully configured. Email sending is DISABLED.")
+if MAIL_ENABLED:
+    app.logger.warning("[MAIL DIAG] USER:True PASS:True SENDER:True")
+else:
+    app.logger.warning("[MAIL DIAG] Mail is NOT fully configured. Email sending DISABLED.")
 
 # === INIT ===
 mail = Mail(app)
 db.init_app(app)
+
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
@@ -46,7 +56,8 @@ login_manager.init_app(app)
 with app.app_context():
     db.create_all()
 
-# OpenAI v1 клієнт
+# === OpenAI v1 клієнт ===
+# ВАЖЛИВО: з версією openai==1.35.10 + httpx==0.27.2 помилка "proxies" зникає.
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @login_manager.user_loader
@@ -55,6 +66,9 @@ def load_user(user_id):
 
 # === Helper: Check and Reset Limits ===
 def check_and_reset_limits(user: User):
+    """
+    Скидає лічильники безкоштовних звітів кожні 14 днів.
+    """
     now = datetime.utcnow()
     if not user.free_reports_reset or (now - user.free_reports_reset) > timedelta(days=14):
         user.free_reports_used = 0
@@ -69,13 +83,16 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        email = request.form["email"].strip().lower()
-        password = request.form["password"]
-        hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            return "Email and password are required", 400
 
         if User.query.filter_by(email=email).first():
             return "User already exists"
 
+        hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
         new_user = User(email=email, password=hashed_pw, is_verified=False)
         db.session.add(new_user)
         db.session.commit()
@@ -128,8 +145,8 @@ def confirm_email(token):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"].strip().lower()
-        password = request.form["password"]
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
         user = User.query.filter_by(email=email).first()
         if not user or not check_password_hash(user.password, password):
             return "Invalid credentials"
@@ -145,55 +162,83 @@ def logout():
     logout_user()
     return "Logged out successfully"
 
+def _allowed_csv(filename: str) -> bool:
+    return filename.lower().endswith(".csv")
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
+    # Перевірка верифікації
     if not current_user.is_verified:
         return "❌ Please verify your email before using this feature.", 403
 
-    # Reset limits if needed
+    # Скидання/перевірка лімітів
     check_and_reset_limits(current_user)
 
-    # Limit check (FREE: 3 / 14 днів)
+    # Ліміт для FREE (3 звіти / 14 днів)
     if not current_user.is_pro and current_user.free_reports_used >= 3:
         return "<h2>❌ Free Limit Reached</h2><p>Please upgrade to PRO.</p>", 403
 
     if 'file' not in request.files:
         return "No file uploaded", 400
+
     file = request.files['file']
-    if file.filename == '' or not file.filename.endswith('.csv'):
+    if not file or file.filename == '':
+        return "No file selected", 400
+    if not _allowed_csv(file.filename):
         return "File must be a CSV", 400
 
     try:
-        # прочитали CSV
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        # Прочитали CSV
+        stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
         rows = list(csv.reader(stream))
+        if not rows:
+            return "CSV is empty", 400
+
+        # (опційно) обмежити розмір для безпеки
+        rows = rows[:5000]
+
         sales_data = "\n".join([", ".join(row) for row in rows])
 
-        # основний запит
-        main_prompt = f"You are an expert restaurant consultant. Analyze the sales data:\n\n{sales_data}"
+        # Основний запит
+        main_prompt = (
+            "You are an expert restaurant consultant. "
+            "Analyze the following sales data and provide clear, structured insights, "
+            "quick wins, and concrete next actions:\n\n"
+            f"{sales_data}"
+        )
         chat_completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": main_prompt}]
+            messages=[{"role": "user", "content": main_prompt}],
+            temperature=0.2,
         )
         result = chat_completion.choices[0].message.content.strip()
 
         roi_forecast, top_campaign = "", ""
         if current_user.is_pro:
-            roi_prompt = f"ROI prediction:\n{sales_data}"
-            campaign_prompt = f"Suggest a campaign:\n{sales_data}"
+            roi_prompt = (
+                "Provide a brief ROI forecast (assumptions + numbers) based on this sales data:\n\n"
+                f"{sales_data}"
+            )
+            campaign_prompt = (
+                "Propose one high-impact marketing campaign tailored to this sales data. "
+                "Include target segment, offer, channel, and 3 KPIs:\n\n"
+                f"{sales_data}"
+            )
 
             roi_forecast = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": roi_prompt}]
+                messages=[{"role": "user", "content": roi_prompt}],
+                temperature=0.2,
             ).choices[0].message.content.strip()
 
             top_campaign = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": campaign_prompt}]
+                messages=[{"role": "user", "content": campaign_prompt}],
+                temperature=0.2,
             ).choices[0].message.content.strip()
 
-        # рендеримо HTML звіту
+        # Рендеримо HTML звіту
         html = render_template(
             "report.html",
             content=result,
@@ -202,36 +247,39 @@ def analyze():
             top_campaign=top_campaign
         )
 
-        # генеруємо PDF (або HTML fallback)
+        # Генеруємо PDF (або HTML fallback)
         reports_dir = "reports"
         os.makedirs(reports_dir, exist_ok=True)
-        filename = f"report_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
-        pdf_path = os.path.join(reports_dir, filename)
+        filename_base = f"report_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}"
+        pdf_path = os.path.join(reports_dir, f"{filename_base}.pdf")
 
         try:
             pdfkit.from_string(html, pdf_path)
             file_to_send = os.path.abspath(pdf_path)
+            stored_name = f"{filename_base}.pdf"
         except Exception:
             app.logger.exception("pdfkit failed; falling back to HTML")
-            html_fallback = os.path.join(reports_dir, filename.replace(".pdf", ".html"))
+            html_fallback = os.path.join(reports_dir, f"{filename_base}.html")
             with open(html_fallback, "w", encoding="utf-8") as f:
                 f.write(html)
             file_to_send = os.path.abspath(html_fallback)
+            stored_name = f"{filename_base}.html"
 
-        # зберігаємо запис про звіт
+        # Зберігаємо запис про звіт
         new_report = Report(
             user_id=current_user.id,
-            filename=os.path.basename(file_to_send),
+            filename=stored_name,
             created_at=datetime.utcnow()
         )
         db.session.add(new_report)
 
-        # інкремент ліміту для FREE
+        # Інкремент ліміту для FREE
         if not current_user.is_pro:
-            current_user.free_reports_used += 1
+            current_user.free_reports_used = (current_user.free_reports_used or 0) + 1
+
         db.session.commit()
 
-        # віддаємо файл
+        # Віддаємо файл
         return send_file(file_to_send, as_attachment=True)
 
     except Exception as e:
@@ -241,18 +289,19 @@ def analyze():
 @app.route('/report-history')
 @login_required
 def report_history():
-    reports = Report.query.filter_by(user_id=current_user.id).order_by(Report.created_at.desc()).all()
+    reports = Report.query.filter_by(user_id=current_user.id)\
+        .order_by(Report.created_at.desc()).all()
     return render_template('report_history.html', reports=reports)
 
 @app.route("/download-report/<path:filename>")
 @login_required
 def download_report(filename):
-    # належність файлу користувачу
+    # Перевіряємо, що файл належить користувачу
     report = Report.query.filter_by(user_id=current_user.id, filename=filename).first()
     if not report:
         abort(404)
 
-    # перевірка шляху
+    # Перевірка шляху
     reports_dir = os.path.abspath("reports")
     safe_path = safe_join(reports_dir, filename)
     if not safe_path or not os.path.isfile(safe_path):
@@ -264,7 +313,7 @@ def download_report(filename):
 @login_required
 def dashboard():
     check_and_reset_limits(current_user)
-    remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - current_user.free_reports_used)
+    remaining_reports = "Unlimited" if current_user.is_pro else max(0, 3 - (current_user.free_reports_used or 0))
     return render_template("dashboard.html", is_pro=current_user.is_pro, remaining_reports=remaining_reports)
 
 @app.route("/healthz")
@@ -276,4 +325,5 @@ def healthz():
         return f"db error: {e}", 500
 
 if __name__ == "__main__":
+    # debug=True не бажано в проді, але лишаємо для локального запуску
     app.run(debug=True)
